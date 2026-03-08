@@ -8,13 +8,17 @@ Minimal, practical, and reusable.
 
 - `search-docs`
   - Source: `git-library/.claude/skills/search-docs/`
-  - Purpose: Query docs from MCP knowledge libraries.
+  - Purpose: Query docs from git-library MCP knowledge libraries (`claude-code`, `openai-codex`, `gemini-cli`, `codebuddy-docs`, `cnb-feedback`, `bestblogs-ai-coding`).
   - Hosted MCP service: `https://mcp.100100086.xyz/mcp`
 
 - `wechat-format`
   - Source: `formatter/.agents/skills/wechat-format/`
   - Purpose: Format Markdown to WeChat-ready HTML via API.
   - Hosted formatting service: `https://md.izoa.fun`
+
+- `wechat-publish`
+  - Source: `one-key-claude/.gemini/skills/wechat-publisher/`
+  - Purpose: End-to-end WeChat publishing workflow (dry-run preview, image upload, draft create/update, submit/status).
 
 - `pdf-to-markdown`
   - Source: `one-key-claude/.gemini/skills/pdf-to-markdown/`
@@ -26,6 +30,7 @@ Minimal, practical, and reusable.
 |---|---|
 | `search-docs` | A connected MCP server exposing `list_libraries`, `search_library`, `read_document`, `get_library_manifest` (recommended: `https://mcp.100100086.xyz/mcp`) |
 | `wechat-format` | Network access to `https://md.izoa.fun` (or self-hosted compatible API) |
+| `wechat-publish` | `bun` runtime + deps `gray-matter`, `marked`, `sharp`; `.env` with `WECHAT_APPID`, `WECHAT_APPSECRET` |
 | `pdf-to-markdown` | `bun` runtime + local dependency `pdfjs-dist` |
 
 ## Quick Start
@@ -53,6 +58,16 @@ codex mcp add git-library https://mcp.100100086.xyz/mcp
 curl -X POST https://md.izoa.fun/api/format \
   -H "Content-Type: application/json" \
   -d '{"markdown":"# Hello","themeId":"tencent-tech"}'
+```
+
+### 4) Publish to WeChat draft box (for `wechat-publish`)
+
+```bash
+# Preview first
+bun skills/wechat-publish/scripts/publish.ts article.md --dry-run
+
+# Create draft
+bun skills/wechat-publish/scripts/publish.ts article.md
 ```
 
 ## Layout

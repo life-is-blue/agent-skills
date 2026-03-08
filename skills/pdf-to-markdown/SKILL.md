@@ -9,7 +9,7 @@ allowed-tools: Bash
 ## 用法
 
 ```bash
-bun .gemini/skills/pdf-to-markdown/pdf-to-markdown.ts <input.pdf> [password]
+bun skills/pdf-to-markdown/pdf-to-markdown.ts <input.pdf> [password]
 ```
 
 输出文件自动生成在 PDF 同目录，扩展名替换为 `.md`。
@@ -57,10 +57,10 @@ PDF → 提取文本项 → 按 Y 坐标组行 → 启发式段落合并 → Mar
 
 ```bash
 # 基础转换
-bun .gemini/skills/pdf-to-markdown/pdf-to-markdown.ts knowledge/notes/report.pdf
+bun skills/pdf-to-markdown/pdf-to-markdown.ts knowledge/notes/report.pdf
 
 # 加密 PDF
-bun .gemini/skills/pdf-to-markdown/pdf-to-markdown.ts secret.pdf mypassword
+bun skills/pdf-to-markdown/pdf-to-markdown.ts secret.pdf mypassword
 ```
 
 ## 移植到其他项目
@@ -70,7 +70,7 @@ bun .gemini/skills/pdf-to-markdown/pdf-to-markdown.ts secret.pdf mypassword
 ```bash
 cd target-project
 bun add pdfjs-dist
-bun .gemini/skills/pdf-to-markdown/pdf-to-markdown.ts <file.pdf>
+bun skills/pdf-to-markdown/pdf-to-markdown.ts <file.pdf>
 ```
 
 ## 局限

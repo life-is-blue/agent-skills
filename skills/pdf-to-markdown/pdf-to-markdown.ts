@@ -40,7 +40,7 @@ interface VisualLine {
 async function main() {
     const args = process.argv.slice(2);
     if (args.length < 1) {
-        console.error("Usage: bun .codebuddy/skills/pdf-to-markdown/pdf-to-markdown.ts <input.pdf> [password]");
+        console.error("Usage: bun skills/pdf-to-markdown/pdf-to-markdown.ts <input.pdf> [password]");
         process.exit(1);
     }
 

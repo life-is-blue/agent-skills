@@ -1,6 +1,6 @@
 ---
 name: search-docs
-description: Search the git-library knowledge base for documentation. Use when user says "search docs", "find documentation", "look up", or asks questions about tools and libraries indexed in git-library.
+description: Use when users need documentation lookup from git-library knowledge libraries (claude-code, cnb-feedback, codebuddy-docs, gemini-cli, openai-codex, bestblogs-ai-coding), including "search docs", "find documentation", and MCP knowledge queries.
 ---
 
 # Search Knowledge Base

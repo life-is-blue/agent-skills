@@ -1,5 +1,7 @@
 # agent-skills
 
+中文说明：这是一个可直接复用的开源技能仓库，聚焦 AI Coding 场景下的文档检索、微信排版/发布、PDF 转 Markdown 等高频流程。仓库内技能可独立使用，也可按需组合到你的 MCP/Agent 工作流中，默认优先提供最小依赖、可落地、可二次改造的实践模板。
+
 A standalone, open-source skill pack extracted from local production repositories.
 
 Minimal, practical, and reusable.

@@ -1,60 +1,44 @@
 # agent-skills
 
-中文说明：这是一个可直接复用的开源技能仓库，聚焦 AI Coding 场景下的文档检索、微信排版/发布、PDF 转 Markdown 等高频流程。仓库内技能可独立使用，也可按需组合到你的 MCP/Agent 工作流中，默认优先提供最小依赖、可落地、可二次改造的实践模板。
+一个开源、可复用的 Agent Skills 仓库，聚焦 AI Coding 高频场景：文档检索、微信排版与发布、PDF 转 Markdown。目标是提供“拿来即用”的最小实践模板，方便团队快速接入并二次扩展。
 
-A standalone, open-source skill pack extracted from local production repositories.
-
-Minimal, practical, and reusable.
-
-## Included Skills
+## 收录技能
 
 - `search-docs`
-  - Source: `git-library/.claude/skills/search-docs/`
-  - Purpose: Query docs from git-library MCP knowledge libraries (`claude-code`, `openai-codex`, `gemini-cli`, `codebuddy-docs`, `cnb-feedback`, `bestblogs-ai-coding`).
-  - Hosted MCP service: `https://mcp.100100086.xyz/mcp`
-
+  - 来源：`git-library/.claude/skills/search-docs/`
+  - 作用：基于 `git-library` MCP 做文档检索（`claude-code`、`openai-codex`、`gemini-cli`、`codebuddy-docs`、`cnb-feedback`、`bestblogs-ai-coding`）
+  - 推荐服务：`https://mcp.100100086.xyz/mcp`
 - `wechat-format`
-  - Source: `formatter/.agents/skills/wechat-format/`
-  - Purpose: Format Markdown to WeChat-ready HTML via API.
-  - Hosted formatting service: `https://md.izoa.fun`
-
+  - 来源：`formatter/.agents/skills/wechat-format/`
+  - 作用：调用排版服务将 Markdown 转为公众号 HTML
+  - 推荐服务：`https://md.izoa.fun`
 - `wechat-publish`
-  - Source: `one-key-claude/.gemini/skills/wechat-publisher/`
-  - Purpose: End-to-end WeChat publishing workflow (dry-run preview, image upload, draft create/update, submit/status).
-
+  - 来源：`one-key-claude/.gemini/skills/wechat-publisher/`
+  - 作用：公众号发布一条龙（dry-run、图片上传、草稿创建/更新、发布状态查询）
 - `pdf-to-markdown`
-  - Source: `one-key-claude/.gemini/skills/pdf-to-markdown/`
-  - Purpose: Convert PDF text to Markdown with heuristic layout reconstruction.
+  - 来源：`one-key-claude/.gemini/skills/pdf-to-markdown/`
+  - 作用：PDF 文本抽取并按启发式规则还原 Markdown 结构
 
-## Runtime Dependencies
+## 快速开始
 
-| Skill | What you need |
-|---|---|
-| `search-docs` | A connected MCP server exposing `list_libraries`, `search_library`, `read_document`, `get_library_manifest` (recommended: `https://mcp.100100086.xyz/mcp`) |
-| `wechat-format` | Network access to `https://md.izoa.fun` (or self-hosted compatible API) |
-| `wechat-publish` | `bun` runtime + deps `gray-matter`, `marked`, `sharp`; `.env` with `WECHAT_APPID`, `WECHAT_APPSECRET` |
-| `pdf-to-markdown` | `bun` runtime + local dependency `pdfjs-dist` |
-
-## Quick Start
-
-### 1) Install local dependency (for `pdf-to-markdown`)
+### 1. 安装依赖
 
 ```bash
 cd agent-skills
 bun install
 ```
 
-### 2) Connect hosted MCP service (for `search-docs`)
+### 2. 接入文档检索 MCP（`search-docs`）
 
 ```bash
 # Claude Code
 claude mcp add --transport http git-library https://mcp.100100086.xyz/mcp
 
-# Codex CLI
+# Codex CLI（注意 --url）
 codex mcp add git-library --url https://mcp.100100086.xyz/mcp
 ```
 
-### 3) Use hosted formatting API (for `wechat-format`)
+### 3. 微信排版（`wechat-format`）
 
 ```bash
 curl -X POST https://md.izoa.fun/api/format \
@@ -62,21 +46,49 @@ curl -X POST https://md.izoa.fun/api/format \
   -d '{"markdown":"# Hello","themeId":"tencent-tech"}'
 ```
 
-### 4) Publish to WeChat draft box (for `wechat-publish`)
+### 4. 微信发布（`wechat-publish`）
 
 ```bash
-# Preview first
+# 先预览（推荐）
 bun skills/wechat-publish/scripts/publish.ts article.md --dry-run
 
-# Create draft
+# 再创建草稿
 bun skills/wechat-publish/scripts/publish.ts article.md
 ```
 
-## Layout
+### 5. PDF 转 Markdown（`pdf-to-markdown`）
 
-- `skills/<skill-name>/SKILL.md`
-- Optional scripts are included under each skill folder.
+```bash
+bun skills/pdf-to-markdown/pdf-to-markdown.ts ./docs/sample.pdf
+```
 
-## Notes
+## 运行依赖
 
-These skills are copied as-is from source projects to keep extraction minimal and non-invasive.
+| 技能 | 依赖 |
+|---|---|
+| `search-docs` | 可用的 MCP Server（需支持 `list_libraries`、`search_library`、`read_document`、`get_library_manifest`） |
+| `wechat-format` | 可访问 `md.izoa.fun` 或兼容自建服务 |
+| `wechat-publish` | `bun` + `gray-matter` + `marked` + `sharp`，并配置 `WECHAT_APPID` / `WECHAT_APPSECRET` |
+| `pdf-to-markdown` | `bun` + `pdfjs-dist` |
+
+## 目录约定
+
+- `skills/<skill-name>/SKILL.md`：技能主说明
+- `skills/<skill-name>/scripts/*`：技能脚本（可选）
+
+---
+
+## English (Brief)
+
+`agent-skills` is a reusable open-source skill pack for AI coding workflows.  
+It includes:
+- `search-docs` (git-library MCP documentation search)
+- `wechat-format` (Markdown -> WeChat HTML via API)
+- `wechat-publish` (end-to-end WeChat draft/publish workflow)
+- `pdf-to-markdown` (PDF text extraction to Markdown)
+
+Quick setup:
+1. `bun install`
+2. Connect MCP:
+   - `claude mcp add --transport http git-library https://mcp.100100086.xyz/mcp`
+   - `codex mcp add git-library --url https://mcp.100100086.xyz/mcp`

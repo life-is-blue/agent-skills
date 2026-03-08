@@ -1,4 +1,4 @@
-# open-agent-skills-pack
+# agent-skills
 
 A standalone, open-source skill pack extracted from local production repositories.
 

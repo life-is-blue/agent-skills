@@ -51,7 +51,7 @@ bun install
 claude mcp add --transport http git-library https://mcp.100100086.xyz/mcp
 
 # Codex CLI
-codex mcp add git-library https://mcp.100100086.xyz/mcp
+codex mcp add git-library --url https://mcp.100100086.xyz/mcp
 ```
 
 ### 3) Use hosted formatting API (for `wechat-format`)

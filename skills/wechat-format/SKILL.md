@@ -14,7 +14,7 @@ Account articles using the Alchemy Formatter API.
 
 ## API Base URL
 
-Production: `https://md.izoa.fun`
+Production (official hosted service provided by our team): `https://md.izoa.fun`
 Self-hosted: replace with your own deployment URL.
 
 ## Core Workflow

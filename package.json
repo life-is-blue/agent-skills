@@ -1,0 +1,13 @@
+{
+  "name": "agent-skills",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Minimal reusable agent skills pack",
+  "type": "module",
+  "scripts": {
+    "pdf-to-markdown": "bun skills/pdf-to-markdown/pdf-to-markdown.ts"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38"
+  }
+}

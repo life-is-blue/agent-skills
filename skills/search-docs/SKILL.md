@@ -5,6 +5,17 @@ description: Search the git-library knowledge base for documentation. Use when u
 
 # Search Knowledge Base
 
+## Prerequisite
+
+This skill requires an MCP server that provides:
+- `list_libraries`
+- `search_library`
+- `read_document`
+- `get_library_manifest`
+
+Recommended hosted endpoint:
+- `https://mcp.100100086.xyz/mcp` (git-library online MCP service)
+
 ## Instructions
 
 1. **Pick the best library**: Check `list_libraries` or the tool descriptions to find the `library_id` whose description best matches the query topic.

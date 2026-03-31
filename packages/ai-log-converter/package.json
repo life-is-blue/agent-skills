@@ -1,0 +1,11 @@
+{
+  "name": "@agent-skills/ai-log-converter",
+  "version": "0.1.0",
+  "type": "module",
+  "module": "src/index.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x @biomejs/biome check src tests"
+  }
+}

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "module": "src/index.ts",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "test": "bun test",
     "lint": "bun x @biomejs/biome check src",
@@ -12,7 +15,8 @@
     "dev": "bun --watch src/index.ts",
     "wechat": "bun src/cli/wechat.ts",
     "publish": "bun src/cli/publish.ts",
-    "pdf2md": "bun src/cli/pdf-to-md.ts"
+    "pdf2md": "bun src/cli/pdf-to-md.ts",
+    "log-convert": "bun src/cli/log-convert.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "1.5.3",

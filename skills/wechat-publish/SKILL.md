@@ -23,10 +23,10 @@ WECHAT_AUTHOR=你的名字
 EOF
 
 # 3. 先 dry-run 确认效果
-bun skills/wechat-publish/scripts/publish.ts article.md --dry-run
+bun run publish article.md --dry-run
 
 # 4. 确认无误后发布
-bun skills/wechat-publish/scripts/publish.ts article.md --cover cover.webp
+bun run publish article.md --cover cover.webp
 ```
 
 ## Dependencies
@@ -125,7 +125,7 @@ scripts/
 ### Step 2: Dry-Run 预览
 
 ```bash
-bun skills/wechat-publish/scripts/publish.ts <file.md> --dry-run
+bun run publish <file.md> --dry-run
 ```
 
 检查:
@@ -139,7 +139,7 @@ bun skills/wechat-publish/scripts/publish.ts <file.md> --dry-run
 确认 dry-run 无误后执行：
 
 ```bash
-bun skills/wechat-publish/scripts/publish.ts <file.md> [options]
+bun run publish <file.md> [options]
 ```
 
 脚本会：
@@ -159,7 +159,7 @@ bun skills/wechat-publish/scripts/publish.ts <file.md> [options]
 ### publish.ts — 创建/更新草稿
 
 ```bash
-bun skills/wechat-publish/scripts/publish.ts <markdown-file> \
+bun run publish <markdown-file> \
   [--theme wechat-story] \
   [--title "标题"] \
   [--author "作者"] \
@@ -186,19 +186,19 @@ bun skills/wechat-publish/scripts/publish.ts <markdown-file> \
 
 ```bash
 # 列出所有草稿
-bun skills/wechat-publish/scripts/wechat-manage.ts draft list
+bun run wechat draft list
 
 # 删除草稿
-bun skills/wechat-publish/scripts/wechat-manage.ts draft delete <media_id>
+bun run wechat draft delete <media_id>
 
 # 覆盖已有草稿（等同 publish.ts --update）
-bun skills/wechat-publish/scripts/wechat-manage.ts draft update <media_id> <file.md>
+bun run wechat draft update <media_id> <file.md>
 
 # 提交发布（草稿 → 正式文章）
-bun skills/wechat-publish/scripts/wechat-manage.ts submit <media_id>
+bun run wechat submit <media_id>
 
 # 查询发布状态
-bun skills/wechat-publish/scripts/wechat-manage.ts status <publish_id>
+bun run wechat status <publish_id>
 ```
 
 典型流程: `publish.ts` 创建草稿 → `draft list` 确认 → 人工预览 → `submit` 提交发布 → `status` 查看结果。
@@ -306,16 +306,16 @@ WECHAT_API_BASE=https://wx.xxx.xyz/cgi-bin  # API 代理（国内直连不通时
 ```bash
 # 1. 批量 dry-run（封面图已内嵌到各篇 Markdown，无需 --cover）
 for f in knowledge/topics/<topic>/0[1-4]*.md; do
-  bun skills/wechat-publish/scripts/publish.ts "$f" --dry-run
+  bun run publish "$f" --dry-run
 done
 
 # 2. 确认预览无误后去掉 --dry-run
 for f in knowledge/topics/<topic>/0[1-4]*.md; do
-  bun skills/wechat-publish/scripts/publish.ts "$f"
+  bun run publish "$f"
 done
 
 # 3. 验证草稿箱
-bun skills/wechat-publish/scripts/wechat-manage.ts draft list
+bun run wechat draft list
 ```
 
 ## Publishing Checklist（快速参考）
@@ -324,11 +324,11 @@ bun skills/wechat-publish/scripts/wechat-manage.ts draft list
 
 ```
 1. 确认封面图已内嵌        grep '!\[封面\]' article.md
-2. dry-run 检查大小         bun publish.ts article.md --dry-run
+2. dry-run 检查大小         bun run publish article.md --dry-run
    → chars ≤19600?（留 400 余量给 CDN URL）
    → 图片列表完整？封面在首位？
-3. 发布到草稿箱             bun publish.ts article.md
-4. 验证草稿                 bun wechat-manage.ts draft list
+3. 发布到草稿箱             bun run publish article.md
+4. 验证草稿                 bun run wechat draft list
 5. 人工预览                 mp.weixin.qq.com → 草稿箱 → 预览
 6. 定时群发                 公众号后台手动设置（API 不支持非认证号定时）
 ```
@@ -336,9 +336,9 @@ bun skills/wechat-publish/scripts/wechat-manage.ts draft list
 更新已有草稿：
 
 ```
-1. 获取 media_id            bun wechat-manage.ts draft list
-2. 覆盖草稿                 bun publish.ts article.md --update <media_id>
-   或                       bun wechat-manage.ts draft update <media_id> article.md
+1. 获取 media_id            bun run wechat draft list
+2. 覆盖草稿                 bun run publish article.md --update <media_id>
+   或                       bun run wechat draft update <media_id> article.md
 ```
 
 ### 文章超限处理

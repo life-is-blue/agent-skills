@@ -9,7 +9,7 @@ allowed-tools: Bash
 ## 用法
 
 ```bash
-bun skills/pdf-to-markdown/pdf-to-markdown.ts <input.pdf> [password]
+bun run pdf2md <input.pdf> [password]
 ```
 
 输出文件自动生成在 PDF 同目录，扩展名替换为 `.md`。
@@ -57,10 +57,10 @@ PDF → 提取文本项 → 按 Y 坐标组行 → 启发式段落合并 → Mar
 
 ```bash
 # 基础转换
-bun skills/pdf-to-markdown/pdf-to-markdown.ts knowledge/notes/report.pdf
+bun run pdf2md knowledge/notes/report.pdf
 
 # 加密 PDF
-bun skills/pdf-to-markdown/pdf-to-markdown.ts secret.pdf mypassword
+bun run pdf2md secret.pdf mypassword
 ```
 
 ## 移植到其他项目
@@ -70,7 +70,7 @@ bun skills/pdf-to-markdown/pdf-to-markdown.ts secret.pdf mypassword
 ```bash
 cd target-project
 bun add pdfjs-dist
-bun skills/pdf-to-markdown/pdf-to-markdown.ts <file.pdf>
+bun run pdf2md <file.pdf>
 ```
 
 ## 局限

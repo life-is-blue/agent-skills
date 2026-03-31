@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { calculateSlop, cleanText } from "../src/clean";
+import type { ContentBlock } from "../src/types";
 
 describe("clean", () => {
   it("removes caveat tags and collapses blank lines", () => {
@@ -9,7 +10,7 @@ describe("clean", () => {
   });
 
   it("calculates slop ratio", () => {
-    const blocks = [
+    const blocks: ContentBlock[] = [
       { type: "thought", text: "xx" },
       { type: "text", text: "xx" },
     ];

@@ -50,16 +50,16 @@ curl -X POST https://md.izoa.fun/api/format \
 
 ```bash
 # 先预览（推荐）
-bun skills/wechat-publish/scripts/publish.ts article.md --dry-run
+bun run publish article.md --dry-run
 
 # 再创建草稿
-bun skills/wechat-publish/scripts/publish.ts article.md
+bun run publish article.md
 ```
 
 ### 5. PDF 转 Markdown（`pdf-to-markdown`）
 
 ```bash
-bun skills/pdf-to-markdown/pdf-to-markdown.ts ./docs/sample.pdf
+bun run pdf2md ./docs/sample.pdf
 ```
 
 ## 运行依赖

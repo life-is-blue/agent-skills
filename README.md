@@ -62,6 +62,16 @@ bun run publish article.md
 bun run pdf2md ./docs/sample.pdf
 ```
 
+### 6. AI 日志转换（`ai-log-converter` 底层执行器）
+
+```bash
+# 统一入口（由主仓库脚本转发到 ai-log-converter.py）
+bun run log-convert input.jsonl output.md
+```
+
+可选环境变量：
+- `PYTHON_BIN`：指定 Python 可执行文件，默认 `python3`
+
 ## 运行依赖
 
 | 技能 | 依赖 |

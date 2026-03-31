@@ -1,18 +1,29 @@
 {
-  "name": "agent-skills",
-  "private": true,
+  "name": "agent-first-tooling",
   "version": "0.1.0",
-  "description": "Minimal reusable agent skills pack",
+  "module": "src/index.ts",
   "type": "module",
   "scripts": {
-    "pdf-to-markdown": "bun skills/pdf-to-markdown/pdf-to-markdown.ts",
-    "wechat-publish": "bun skills/wechat-publish/scripts/publish.ts",
-    "wechat-manage": "bun skills/wechat-publish/scripts/wechat-manage.ts"
+    "test": "bun test",
+    "lint": "bun x @biomejs/biome check src",
+    "lint:fix": "bun x @biomejs/biome check --apply src",
+    "typecheck": "bun x tsc --noEmit",
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "dev": "bun --watch src/index.ts",
+    "wechat": "bun src/cli/wechat.ts",
+    "publish": "bun src/cli/publish.ts",
+    "pdf2md": "bun src/cli/pdf-to-md.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.5.3",
+    "bun-types": "latest",
+    "typescript": "^5.0.0"
   },
   "dependencies": {
     "gray-matter": "^4.0.3",
-    "marked": "^12.0.2",
-    "sharp": "^0.33.5",
-    "pdfjs-dist": "^4.10.38"
+    "marked": "^17.0.5",
+    "pdfjs-dist": "^5.6.205",
+    "sharp": "^0.34.5",
+    "zod": "^4.3.6"
   }
 }

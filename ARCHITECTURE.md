@@ -1,34 +1,32 @@
-# ARCHITECTURE.md - 领域分层设计
+# ARCHITECTURE.md - 技能仓库架构
 
-## 架构模型 (Google Style + OpenAI Layering)
+## 设计理念
 
-本项目采用严格的单向依赖架构。每一层只能“向前”依赖。
+每个 Skill 是独立封装的原子能力，通过 `skills/<name>/SKILL.md` 描述用法和协议。
 
-### 1. Schema 层 (`src/schema/`)
-- **定义**: 业务实体和数据契约。
-- **工具**: Zod。
-- **规则**: 禁止包含任何逻辑。仅定义数据结构。
+## 目录结构
 
-### 2. Core 层 (`src/core/`)
-- **定义**: 纯逻辑和算法（例如日志转换算法）。
-- **规则**: 无副作用。禁止进行网络、文件 I/O 操作。
+```
+.
+├── skills/                     # 技能定义（SKILL.md）
+│   ├── pdf-to-markdown/
+│   └── wechat-publish/
+├── packages/                   # 可复用执行器（Bun Workspace）
+│   └── ai-log-converter/
+├── docs/plans/                 # 任务计划
+│   ├── active/
+│   └── completed/
+└── AGENTS.md                   # 智能体操作规范
+```
 
-### 3. Services 层 (`src/services/`)
-- **定义**: 业务流编排。
-- **规则**: 允许调用 Core 和进行 I/O 操作。它是连接 Schema 和 Runtime 的桥梁。
+## 工具链
 
-### 4. Entry 层 (`src/cli/` 或 `src/index.ts`)
-- **定义**: 应用程序入口。
-- **规则**: 极薄的包装层。处理参数解析、环境初始化。
-
-## 工具链选择 (Bun Native)
 - **Runtime**: Bun 1.x
-- **Linter/Formatter**: Biome (Google Style compliant)
+- **Linter/Formatter**: Biome
 - **Test Runner**: Bun Test
-- **Database**: Bun SQLite (if needed)
 
-## 底层执行器管理（Skill Runtime）
+## Packages
 
-- `packages/ai-log-converter/` 作为 Skill 底层执行器，由主仓库统一入口 `bun run log-convert` 调用。
-- 统一入口位于 `src/cli/log-convert.ts`，负责参数透传、退出码透传和脚本路径稳定性。
-- 采用 Bun Workspace 管理，与主仓库同步开发、强一致发布。
+`packages/` 下的包通过 Bun Workspace 管理，可被技能脚本引用。
+
+- `ai-log-converter` — AI 对话日志格式识别与清洗

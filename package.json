@@ -1,33 +1,16 @@
 {
-  "name": "agent-first-tooling",
+  "name": "agent-skills",
   "version": "0.1.0",
-  "module": "src/index.ts",
   "type": "module",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "test": "bun test",
-    "lint": "bun x @biomejs/biome check src",
-    "lint:fix": "bun x @biomejs/biome check --apply src",
-    "typecheck": "bun x tsc --noEmit",
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
-    "dev": "bun --watch src/index.ts",
-    "wechat": "bun src/cli/wechat.ts",
-    "publish": "bun src/cli/publish.ts",
-    "pdf2md": "bun src/cli/pdf-to-md.ts",
-    "log-convert": "bun src/cli/log-convert.ts"
+    "test": "bun test"
   },
   "devDependencies": {
     "@biomejs/biome": "1.5.3",
     "bun-types": "latest",
     "typescript": "^5.0.0"
-  },
-  "dependencies": {
-    "gray-matter": "^4.0.3",
-    "marked": "^17.0.5",
-    "pdfjs-dist": "^5.6.205",
-    "sharp": "^0.34.5",
-    "zod": "^4.3.6"
   }
 }

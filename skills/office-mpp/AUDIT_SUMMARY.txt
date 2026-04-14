@@ -1,0 +1,105 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    office-mpp SKILL AUDIT — QUICK SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+OVERALL RESULT: Multiple documentation gaps and one CRITICAL schema mismatch
+
+───────────────────────────────────────────────────────────────────────────────
+CRITICAL ISSUE (Fix immediately):
+───────────────────────────────────────────────────────────────────────────────
+
+❌ schema.py Task dataclass missing fields that mpp_reader.py actually returns:
+
+   Missing field: "critical" (bool)
+     - Returned by both _read_mpp() [line 66] and _read_xml() [line 133]
+     - NOT in schema.py Task definition
+     
+   Missing field: "duration_hours" (float)
+     - Returned by _read_xml() [line 129]
+     - NOT in schema.py Task definition
+
+   Underpopulated fields:
+     - planned_pct_source: Always "" in reader (should be "mpp" or "computed")
+     - gap_pct_source: Always "" in reader (should be "mpp" or "computed")
+     - gap.md requires these but mpp_reader.py doesn't populate them
+
+───────────────────────────────────────────────────────────────────────────────
+HIGH PRIORITY DOCUMENTATION GAPS (Fix soon):
+───────────────────────────────────────────────────────────────────────────────
+
+⚠️  SKILL.md missing/incomplete command documentation:
+
+    READ (mpp_reader.py):
+      Missing: --resources, --wbs
+      Lines 42-50 in SKILL.md
+
+    GAP (mpp_plan_vs_actual.py):
+      Missing: --date (only documented as "current date" without flag name)
+      Line 59 in SKILL.md
+      
+    EXPORT (mpp_to_excel.py):
+      Missing: --analyze flag
+      Lines 99-100 in SKILL.md
+
+    EDIT (mspdi_editor.py):
+      Missing: --actual-start, --actual-finish, --task-name
+      Lines 134-152 in SKILL.md
+
+───────────────────────────────────────────────────────────────────────────────
+VERIFICATION RESULTS:
+───────────────────────────────────────────────────────────────────────────────
+
+✅ CORRECT:
+  - env_check.sh --json output is valid JSON
+  - VALIDATE script commands all match documentation
+  - CREATE script commands all match documentation
+  - Exit codes follow spec (0, 1→E_INPUT, 2→E_ENV/E_IO)
+  - Key invariants verified:
+    * XML is editable format, MPP read-only
+    * UID uniqueness enforced
+    * Namespace properly registered
+    * Duration format (PT###H##M##S) enforced
+
+⚠️  INCOMPLETE:
+  - mpp_plan_vs_actual.py: Line 59 suggests default behavior not documented
+  - mpp_analyze.py: Referenced in line 217 but no usage examples
+
+───────────────────────────────────────────────────────────────────────────────
+QUICK FIX CHECKLIST:
+───────────────────────────────────────────────────────────────────────────────
+
+1. [ ] Update schema.py Task dataclass:
+        - Add: critical: bool = False
+        - Add: duration_hours: Optional[float] = None
+        
+2. [ ] Fix mpp_reader.py to populate source fields:
+        - Set planned_pct_source = "mpp" or "computed"
+        - Set gap_pct_source = "mpp" or "computed"
+        
+3. [ ] Update SKILL.md documentation:
+        - Add --resources, --wbs to READ section
+        - Add --date, --analyze to respective sections
+        - Add --actual-start, --actual-finish to EDIT section
+        
+4. [ ] Clarify mpp_plan_vs_actual behavior:
+        - Document what happens without --date/--dates/--weeks
+
+5. [ ] Verify mpp_analyze.py:
+        - Document usage or remove from SKILL.md
+
+───────────────────────────────────────────────────────────────────────────────
+FILES AFFECTED:
+───────────────────────────────────────────────────────────────────────────────
+
+Primary:
+  scripts/schema.py          — Missing fields
+  scripts/mpp_reader.py      — Source tracking incomplete
+  SKILL.md                   — Incomplete documentation
+
+Secondary:
+  scripts/mpp_plan_vs_actual.py  — Undocumented default
+  scripts/mpp_analyze.py         — Missing usage docs
+
+───────────────────────────────────────────────────────────────────────────────
+For detailed findings, see: AUDIT_FINDINGS.md
+═══════════════════════════════════════════════════════════════════════════════

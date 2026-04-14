@@ -5,6 +5,12 @@
 ```
 .
 ├── skills/                     # 技能定义（每个 Skill 一个目录）
+│   ├── office-mpp/             # Microsoft Project 读取/追踪/导出/创建/编辑
+│   │   ├── SKILL.md
+│   │   ├── scripts/            # Python 脚本 + helpers
+│   │   ├── references/         # 操作指南
+│   │   ├── templates/          # MSPDI 模板
+│   │   └── tests/              # 测试套件
 │   ├── pdf-to-markdown/SKILL.md
 │   └── wechat-publish/SKILL.md
 ├── docs/plans/                 # 任务计划

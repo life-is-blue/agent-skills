@@ -205,6 +205,43 @@ bun run wechat status <publish_id>
 
 > **更新 vs 删除重建**: 优先用 `--update` 覆盖草稿。定时发布中的草稿无法删除（error 53407），但可以用 `--update` 覆盖内容。
 
+## Alchemy Format API（独立格式化）
+
+除了通过 `publish.ts` 一键发布外，也可以单独使用 Alchemy API 将 Markdown 转换为微信 HTML。
+
+### POST /api/format — Markdown → WeChat HTML
+
+```bash
+curl -X POST https://md.izoa.fun/api/format \
+  -H "Content-Type: application/json" \
+  -d '{
+    "markdown": "# Hello World\n\nThis is a **demo** article.",
+    "themeId": "wechat-story"
+  }'
+```
+
+| Field       | Type   | Required | Description                              |
+|-------------|--------|----------|------------------------------------------|
+| markdown    | string | yes      | Markdown content to format               |
+| themeId     | string | no       | Theme ID (default: `tencent-tech`)       |
+| accentColor | string | no       | Hex color override, e.g. `#1a73e8`      |
+
+### POST /api/ai — AI Text Processing
+
+```bash
+curl -X POST https://md.izoa.fun/api/ai \
+  -H "Content-Type: application/json" \
+  -d '{"text": "这是一段需要润色的文字", "action": "polish"}'
+```
+
+Actions: `polish` / `grammar` / `summarize` / `autoFormat` / `emphasize`
+
+### MCP Integration
+
+```bash
+claude mcp add alchemy-formatter --transport http https://md.izoa.fun/api/mcp
+```
+
 ## Environment
 
 ```bash

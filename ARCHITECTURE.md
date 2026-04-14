@@ -29,9 +29,6 @@
 
 ## 底层执行器管理（Skill Runtime）
 
-- `ai-log-converter/` 作为 Skill 底层执行器，由主仓库统一入口 `bun run log-convert` 调用。
+- `packages/ai-log-converter/` 作为 Skill 底层执行器，由主仓库统一入口 `bun run log-convert` 调用。
 - 统一入口位于 `src/cli/log-convert.ts`，负责参数透传、退出码透传和脚本路径稳定性。
-- 推荐优先级：
-  1. 同步开发、强一致发布：主仓库统一管理（当前模式）
-  2. 独立发布节奏：拆为独立包（固定版本依赖）
-  3. 必须保留独立 Git 历史：使用 Git Submodule（需维护 `.gitmodules` 和 pin 版本）
+- 采用 Bun Workspace 管理，与主仓库同步开发、强一致发布。

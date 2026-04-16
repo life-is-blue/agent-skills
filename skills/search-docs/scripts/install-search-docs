@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source_cli="${script_dir}/search-docs"
+
+if [[ ! -x "${source_cli}" ]]; then
+  echo "search-docs source not found or not executable: ${source_cli}" >&2
+  exit 1
+fi
+
+bin_dir="${SEARCH_DOCS_BIN_DIR:-$HOME/.local/bin}"
+target_cli="${bin_dir}/search-docs"
+
+mkdir -p "${bin_dir}"
+ln -sf "${source_cli}" "${target_cli}"
+
+if command -v search-docs >/dev/null 2>&1; then
+  echo "search-docs ready: $(command -v search-docs)"
+  exit 0
+fi
+
+shell_name="$(basename "${SHELL:-bash}")"
+path_hint='export PATH="$HOME/.local/bin:$PATH"'
+profile="${HOME}/.bashrc"
+
+if [[ "${shell_name}" == "zsh" ]]; then
+  profile="${HOME}/.zshrc"
+elif [[ "${shell_name}" == "fish" ]]; then
+  profile="${HOME}/.config/fish/config.fish"
+  path_hint='fish_add_path -g ~/.local/bin'
+fi
+
+mkdir -p "$(dirname "${profile}")"
+touch "${profile}"
+
+if ! grep -Fqx "${path_hint}" "${profile}"; then
+  printf "\n%s\n" "${path_hint}" >> "${profile}"
+fi
+
+echo "search-docs installed: ${target_cli}"
+echo "PATH update added to: ${profile}"
+echo "run: source ${profile}"

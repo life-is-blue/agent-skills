@@ -12,6 +12,9 @@
 │   │   ├── templates/          # MSPDI 模板
 │   │   └── tests/              # 测试套件
 │   ├── pdf-to-markdown/SKILL.md
+│   ├── search-docs/              # 文档检索与问答
+│   │   ├── SKILL.md
+│   │   └── scripts/              # 检索与安装脚本
 │   └── wechat-publish/SKILL.md
 ├── docs/plans/                 # 任务计划
 ├── AGENTS.md                   # 智能体操作规范

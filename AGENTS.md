@@ -12,5 +12,14 @@
 3. **Act**: 执行变更。
 4. **Validate**: 验证结果，更新文档。
 
+## 避坑表
+
+| 坑 | 解法 |
+|---|---|
+| 装 skill 到 `<project>/.claude/skills/` 后 Claude Code 报 `Unknown skill: <name>`，但脚本直接 `bash` 调能跑 | 用 `cp -r`，不要 `ln -s`。Claude Code 的 skill 扫描不跟随目录软链 — [#14836](https://github.com/anthropics/claude-code/issues/14836) |
+| 子进程报 `rg: command not found`，但 Claude Code 终端里 `rg` 能用 | `rg` 在 Claude Code 终端里是 bash function 不是真二进制，子进程拿不到。装系统包：`sudo dnf install -y ripgrep`（Debian 系 `apt`、macOS `brew`） |
+
+新增坑：现象 + 解法两列即可，必要时附一个查证链接。
+
 ---
-*Version: 0.2.0*
+*Version: 0.3.0*

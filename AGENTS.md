@@ -16,10 +16,11 @@
 
 | 坑 | 解法 |
 |---|---|
-| 装 skill 到 `<project>/.claude/skills/` 后 Claude Code 报 `Unknown skill: <name>`，但脚本直接 `bash` 调能跑 | 用 `cp -r`，不要 `ln -s`。Claude Code 的 skill 扫描不跟随目录软链 — [#14836](https://github.com/anthropics/claude-code/issues/14836) |
+| 装 skill 到 `<project>/.claude/skills/` 后 Claude Code 报 `Unknown skill: <name>`，但脚本直接 `bash` 调能跑 | 必须在 `.claude/skills/` 所在目录启动 Claude Code（`cd <project> && claude`），不是在父目录——Claude 只扫当前 workspace 的 skill 目录。Linux 实测软链在正确 CWD 下可用；macOS 上软链有已知 bug [#14836](https://github.com/anthropics/claude-code/issues/14836)，跨平台保险用 `cp -r` |
 | 子进程报 `rg: command not found`，但 Claude Code 终端里 `rg` 能用 | `rg` 在 Claude Code 终端里是 bash function 不是真二进制，子进程拿不到。装系统包：`sudo dnf install -y ripgrep`（Debian 系 `apt`、macOS `brew`） |
+| 外部 CLI 的 flag 名或 JSON 字段名，WebFetch 回的文档描述对不上实际行为 | 以本地 `<cmd> --help` + 最小 smoke 调用为准。例：Gemini 的流式输出实际是 `-o stream-json`，但第三方文档站给的是 `streaming-json`；事件字段也只有实跑一次才知道真实 shape |
 
 新增坑：现象 + 解法两列即可，必要时附一个查证链接。
 
 ---
-*Version: 0.3.0*
+*Version: 0.4.0*

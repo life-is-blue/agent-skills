@@ -18,13 +18,16 @@ Reference docs: <https://geminicli.com/docs/cli/headless/>
 | Flag | Purpose |
 |---|---|
 | `-p, --prompt <text>` | The headless prompt. |
-| `-o json` | Structured JSON output. |
+| `-o json` | Single structured JSON object (one shot). |
+| `-o stream-json` | NDJSON event stream — what the wrapper's `--stream` mode uses. |
 | `--yolo` (`-y`) | Auto-approve all tool actions. Default in this skill (CSS edits are reversible). |
 | `--approval-mode plan` | Read-only; Gemini won't write. The wrapper uses `--read-only` to flip to this behavior (currently by dropping `--yolo`; switch to `--approval-mode plan` if you want strict read-only enforcement). |
 | `-m <model>` | Override default model. Wrapper passes through `--model`. |
 | `--include-directories` | Add extra workspace dirs. Not used by default — wrapper `cd`s into `--target`. |
 
-## Expected JSON shape
+## Output shapes
+
+### `-o json` (default, single object)
 
 The CLI help does not formally document the schema, so the wrapper is **defensive**. It tries common field names in this order:
 
@@ -32,22 +35,48 @@ The CLI help does not formally document the schema, so the wrapper is **defensiv
 2. `.text` — fallback name.
 3. `.output` — fallback name.
 
-If none parse, the wrapper prints raw stdout under the same `---` divider. This means the SKILL keeps working even if Gemini changes the JSON shape across versions. When in doubt, run with `--raw` to see exactly what Gemini emitted.
+If none parse, the wrapper prints raw stdout under the same `---` divider. When in doubt, run with `--raw` to see exactly what Gemini emitted.
 
-For errors:
+Error surface:
 - `.error` (string) → wrapper exits 1 and surfaces it on stderr.
-- Non-zero CLI exit code → wrapper forwards it (124 for timeout, otherwise pass-through).
+
+### `-o stream-json` (used by `--stream`)
+
+Newline-delimited JSON. Every line is one event object. Five event types seen in practice (Gemini CLI 0.37):
+
+| `type` | Key fields | Emitted when |
+|---|---|---|
+| `init` | `session_id`, `model` | Session starts |
+| `message` | `role` (user/assistant), `content`, `delta` (bool) | User prompt and every assistant text chunk |
+| `tool_use` | `tool_name`, `tool_id`, `parameters` | Gemini decides to call a tool |
+| `tool_result` | `tool_id`, `status`, `output?` | Each `tool_use` resolves |
+| `result` | `status`, `stats.{total_tokens, tool_calls, duration_ms, models}` | Final event, run is done |
+
+`error` is also listed in the official docs but was not observed in smoke tests — the wrapper's `fmt_stream_line` handles it defensively.
+
+The wrapper:
+- Tees the full NDJSON to `/tmp/gemini-summon-<ts>-<pid>.ndjson` (inspectable afterwards via `--status` / `--follow`).
+- Formats each event into a one-line stderr timeline so the caller sees `update_topic → write_file (hello.html) → success → done: tools=3 tokens=...`.
+- Reconstructs the final assistant message by concatenating `message` events where `role=="assistant"`.
+- Reports `tools=N edits=M` in the summary header, where `edits` counts `tool_use` events whose `tool_name` matches `write_file|replace|edit`.
+
+Assistant messages arrive as `delta: true` chunks — the wrapper's jq filter joins them back into a single response string.
 
 ## Exit codes
 
 | Code | Meaning | Wrapper response |
 |---|---|---|
 | 0 | Success | Print summary on stdout. |
-| 1 | Gemini reported `.error` | Surface error on stderr. |
+| 1 | Gemini reported `.error` in JSON payload | Surface error on stderr. |
 | 2 | Bad arguments to wrapper | Print usage. |
-| 124 | `timeout` killed Gemini | Tell user the timeout. |
+| 42 | Gemini rejected input (invalid prompt/args) | Targeted stderr message + pass through. |
+| 53 | Gemini hit turn limit | Suggest breaking the task up + pass through. |
+| 55 | Untrusted workspace | Explain + point at `GEMINI_CLI_TRUST_WORKSPACE`. |
+| 124 | `timeout` killed Gemini | Tell user the timeout; for `--stream` runs also point at the partial session file. |
 | 127 | `gemini` not on PATH | Print install instructions. |
 | other | Gemini CLI failure | Pass through with stderr dump. |
+
+The wrapper exports `GEMINI_CLI_TRUST_WORKSPACE=true` by default (Gemini 0.40+ refuses to run in untrusted dirs). Caller can override by exporting `=false`.
 
 ## Multimodal references
 

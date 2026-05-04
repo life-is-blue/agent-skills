@@ -2,7 +2,7 @@
 name: gemini-frontend
 description: Use this skill whenever the user wants front-end design or implementation work — building/updating a page, component, landing page, dashboard, hero section; converting a screenshot/mock/Figma export into code; visual polish (spacing, hierarchy, responsive). Trigger eagerly when the user attaches an image, says "做一个 X 页面/组件", "实现这个设计", "前端实现一下", "改一下样式/间距/排版", or mentions Tailwind/shadcn/Material. Routes the work to Gemini CLI in headless mode because Gemini's multimodal vision and front-end code generation outperform Claude here.
 allowed-tools: Bash, Read
-argument-hint: "<design|implement|polish> \"<brief>\" [--ref <img>...] [--target <dir>] [--framework auto|react|vue|svelte|html] [--style auto|tailwind|css] [--read-only] [--timeout 300]"
+argument-hint: "<design|implement|polish> \"<brief>\" [--ref <img>...] [--target <dir>] [--framework auto|react|vue|svelte|html] [--style auto|tailwind|css] [--read-only] [--stream] [--timeout 300]"
 ---
 
 # Gemini Frontend Summon
@@ -54,9 +54,18 @@ Flags:
 - `--framework auto|react|vue|svelte|html` — auto-detected from `package.json` if `auto`.
 - `--style auto|tailwind|css|styled` — auto-detected from `tailwind.config.*` / deps if `auto`.
 - `--read-only` — drops `--yolo`; Gemini will only propose, not write.
+- `--stream` — live timeline to stderr (tool calls, file edits, final stats) + full NDJSON captured to `/tmp/gemini-summon-*.ndjson`. Use for `design`/`implement` runs that may take > 30s; skip for short `--read-only` reviews.
 - `--timeout <sec>` — default 300.
 - `--model <name>` — passthrough to `gemini -m`. Leave unset by default.
 - `--raw` — emit Gemini's full JSON output instead of the human summary (for debugging).
+
+**Status / follow** (for inspecting live or recent runs):
+
+```bash
+scripts/gemini-summon.sh --status              # list recent stream sessions with stats
+scripts/gemini-summon.sh --follow latest       # tail -f the most recent session, formatted
+scripts/gemini-summon.sh --follow <path.ndjson>
+```
 
 The helper is **yolo by default** (auto-writes files). Front-end edits are reversible via `git restore`.
 
@@ -114,6 +123,9 @@ scripts/gemini-summon.sh polish "Header padding feels cramped on mobile; tighten
 
 # Read-only: get a diff proposal without writing
 scripts/gemini-summon.sh implement "Refactor Card to support a leading icon slot" --target ./src --read-only
+
+# Long-running design run with live timeline visible in stderr
+scripts/gemini-summon.sh design "Full marketing landing page with 5 sections" --ref ./mock.png --stream
 ```
 
 ## Anti-patterns

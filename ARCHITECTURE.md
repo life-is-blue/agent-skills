@@ -15,7 +15,11 @@
 │   ├── search-docs/              # 文档检索与问答
 │   │   ├── SKILL.md
 │   │   └── scripts/              # 检索与安装脚本
-│   └── wechat-publish/SKILL.md
+│   ├── wechat-publish/SKILL.md
+│   └── gemini-frontend/          # 召唤 Gemini CLI 做前端设计/实现/打磨
+│       ├── SKILL.md
+│       ├── scripts/              # gemini-summon.sh helper
+│       └── references/           # 路由决策 + headless 输出契约
 ├── docs/plans/                 # 任务计划
 ├── AGENTS.md                   # 智能体操作规范
 └── README.md

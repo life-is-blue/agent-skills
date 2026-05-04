@@ -10,6 +10,7 @@
 | `search-docs` | 基于 git-library 的文档检索与问答，支持 API/配置/迁移/排障等场景 |
 | `wechat-publish` | 微信公众号发布一条龙（排版、dry-run、图片上传、草稿创建/更新） |
 | `pdf-to-markdown` | PDF 文本抽取并按启发式规则还原 Markdown 结构 |
+| `gemini-frontend` | 召唤 Gemini CLI 处理前端设计与开发：截图/mock 转代码、组件实现、视觉打磨 |
 
 每个技能的完整用法详见 `skills/<name>/SKILL.md`。
 

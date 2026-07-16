@@ -1,8 +1,6 @@
 ---
 name: gemini-frontend
 description: Use this skill whenever the user wants front-end design or implementation work — building/updating a page, component, landing page, dashboard, hero section; converting a screenshot/mock/Figma export into code; visual polish (spacing, hierarchy, responsive). Trigger eagerly when the user attaches an image, says "做一个 X 页面/组件", "实现这个设计", "前端实现一下", "改一下样式/间距/排版", or mentions Tailwind/shadcn/Material. Routes the work to Gemini CLI in headless mode because Gemini's multimodal vision and front-end code generation outperform Claude here.
-allowed-tools: Bash, Read
-argument-hint: "<design|implement|polish> \"<brief>\" [--ref <img>...] [--target <dir>] [--framework auto|react|vue|svelte|html] [--style auto|tailwind|css] [--read-only] [--stream] [--timeout 300]"
 ---
 
 # Gemini Frontend Summon

@@ -1,89 +1,66 @@
 # agent-skills
 
-一个开源、可复用的 Agent Skills 仓库，聚焦 AI Coding 高频场景。每个 Skill 独立封装，拿来即用。
+面向 AI Coding 高频场景的可复用 Agent Skills 仓库。每个
+`skills/<name>/SKILL.md` 是一份可移植操作协议；部分 Skill 同时附带脚本、参考资料
+或外部工具适配层。
 
-## 收录技能
+## Skills
 
-| 技能 | 说明 |
-|------|------|
-| `office-mpp` | Microsoft Project 项目计划读取、进度追踪、Gap 分析、Excel 导出、MSPDI 创建与编辑 |
-| `search-docs` | 基于 git-library 的文档检索与问答，支持 API/配置/迁移/排障等场景 |
-| `wechat-publish` | 微信公众号发布一条龙（排版、dry-run、图片上传、草稿创建/更新） |
-| `pdf-to-markdown` | PDF 文本抽取并按启发式规则还原 Markdown 结构 |
-| `gemini-frontend` | 召唤 Gemini CLI 处理前端设计与开发：截图/mock 转代码、组件实现、视觉打磨 |
+| Skill | 交付分类 | 能力 |
+|---|---|---|
+| `office-mpp` | bundled | Microsoft Project 读取、进度追踪、Gap 分析、Excel 导出与 MSPDI 编辑 |
+| `search-docs` | adapter | 通过随附 CLI 访问 git-library，执行文档检索与问答 |
+| `gemini-frontend` | adapter | 通过随附 helper 调用 Gemini CLI 完成前端设计、实现与视觉打磨 |
+| `pdf-to-markdown` | protocol-only | 约定宿主项目中 PDF 文本抽取与 Markdown 还原流程 |
+| `wechat-publish` | protocol-only | 约定宿主项目中微信公众号 dry-run、草稿创建与状态验证流程 |
 
-每个技能的完整用法详见 `skills/<name>/SKILL.md`。
+分类含义：
+
+- `bundled`：核心实现随 Skill 交付。
+- `adapter`：适配层随 Skill 交付，运行时依赖外部 CLI 或 API。
+- `protocol-only`：仓库只交付操作协议，所述命令必须由宿主项目提供。
+
+机器可读清单见 [`skills/catalog.json`](skills/catalog.json)。
 
 ## 安装
 
-先克隆仓库：
+克隆仓库后，将需要的完整 Skill 目录复制到客户端支持的位置：
 
 ```bash
 git clone https://github.com/life-is-blue/agent-skills.git
+cp -r agent-skills/skills/<name> <client-skill-directory>/
 ```
 
-然后根据你使用的 AI 编码工具，将技能复制到对应目录。以安装 `pdf-to-markdown` 为例：
+不同客户端对 Skill 目录、符号链接和 frontmatter 扩展的支持会变化。本仓库以
+`SKILL.md` 协议和目录内相对路径为兼容边界；具体发现路径以所用客户端的当前文档
+和本地 smoke test 为准。
 
-### Gemini CLI
+复制后先阅读对应 `SKILL.md` 的依赖和预检步骤。`protocol-only` Skill 不能仅靠复制
+本仓库目录直接运行。
+
+## 仓库结构
+
+```text
+skills/<name>/
+├── SKILL.md          # 必需：触发描述与操作协议
+├── scripts/          # 可选：可执行实现或适配层
+├── references/       # 可选：按需读取的领域资料
+├── assets/           # 可选：输出所需资产
+└── templates/        # 可选：可复用模板
+```
+
+治理规则和分类准入标准见 [`CONTRIBUTING.md`](CONTRIBUTING.md)，架构说明见
+[`ARCHITECTURE.md`](ARCHITECTURE.md)。
+
+## 验证
 
 ```bash
-mkdir -p .gemini/skills
-cp -r agent-skills/skills/pdf-to-markdown .gemini/skills/
+python3 scripts/validate_repo.py
+python3 -m pytest -q
 ```
 
-Gemini 自动扫描 `.gemini/skills/*/SKILL.md`，无需额外配置。
+相同检查会在 GitHub Actions 中阻断不合规变更。
 
-### Claude Code
+## License
 
-```bash
-mkdir -p .claude/skills
-cp -r agent-skills/skills/pdf-to-markdown .claude/skills/
-```
-
-Claude Code 自动加载 `.claude/skills/` 下的技能。
-
-### CodeBuddy Code
-
-```bash
-mkdir -p skills
-cp -r agent-skills/skills/pdf-to-markdown skills/
-```
-
-CodeBuddy Code 自动发现项目根目录 `skills/*/SKILL.md`。
-
-### OpenAI Codex CLI
-
-Codex 使用 `AGENTS.md` 加载指令，不支持 skill 目录。将 SKILL.md 内容追加到项目的 `AGENTS.md`：
-
-```bash
-cat agent-skills/skills/pdf-to-markdown/SKILL.md >> AGENTS.md
-```
-
-### Cursor / Windsurf
-
-Cursor 和 Windsurf 使用单文件规则（`.cursorrules` / `.windsurfrules`），不支持 skill 目录。将 SKILL.md 内容追加到规则文件：
-
-```bash
-# Cursor
-cat agent-skills/skills/pdf-to-markdown/SKILL.md >> .cursorrules
-
-# Windsurf
-cat agent-skills/skills/pdf-to-markdown/SKILL.md >> .windsurfrules
-```
-
-### 速查表
-
-| 工具 | 技能目录 | 安装方式 |
-|------|---------|---------|
-| Gemini CLI | `.gemini/skills/<name>/SKILL.md` | 复制目录 |
-| Claude Code | `.claude/skills/<name>/SKILL.md` | 复制目录 |
-| CodeBuddy Code | `skills/<name>/SKILL.md` | 复制目录 |
-| Codex CLI | `AGENTS.md` | 追加内容 |
-| Cursor | `.cursorrules` | 追加内容 |
-| Windsurf | `.windsurfrules` | 追加内容 |
-
-## 目录约定
-
-```
-skills/<skill-name>/SKILL.md    # 技能定义与使用协议
-```
+仓库默认使用 [MIT License](LICENSE)。Skill 目录中的独立许可证在其适用范围内优先。

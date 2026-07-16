@@ -1,8 +1,6 @@
 ---
 name: search-docs
 description: Use when users need source-grounded answers from git-library for API/tool/configuration/migration/troubleshooting questions, or when they ask for library structure/topics overview. Triggers: "search docs", "文档检索", "API 文档", "MCP 配置", "migration guide", "troubleshooting", "最新功能".
-allowed-tools: Bash
-argument-hint: "[query]"
 ---
 
 # Search Agentic Knowledge Base

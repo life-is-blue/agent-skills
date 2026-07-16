@@ -10,7 +10,15 @@
 1. **Research**: 阅读相关 `skills/` 目录确认任务情境。
 2. **Plan**: 在 `docs/plans/` 创建任务计划。
 3. **Act**: 执行变更。
-4. **Validate**: 验证结果，更新文档。
+4. **Validate**: 运行 `python3 scripts/validate_repo.py` 和相关领域测试，更新文档。
+
+## Skill 治理
+
+1. `SKILL.md` frontmatter 只保留 `name` 和 `description`。
+2. 新增、删除或重命名 Skill 时同步更新 `skills/catalog.json`。
+3. 根据实际交付形态标记 `bundled`、`adapter` 或 `protocol-only`，不得把宿主项目
+   中的脚本描述成本仓库随附实现。
+4. 详细准入规则以 `CONTRIBUTING.md` 为准。
 
 ## 避坑表
 
@@ -23,4 +31,4 @@
 新增坑：现象 + 解法两列即可，必要时附一个查证链接。
 
 ---
-*Version: 0.4.0*
+*Version: 0.5.0*

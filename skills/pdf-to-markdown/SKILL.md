@@ -1,10 +1,19 @@
 ---
 name: pdf-to-markdown
-description: PDF 转 Markdown 原子能力。基于 pdfjs-dist 提取 PDF 文本，通过启发式算法还原段落结构，输出干净的 Markdown。
-allowed-tools: Bash
+description: PDF 转 Markdown 操作协议。用于宿主项目已经提供 pdf2md 命令时，通过 pdfjs-dist 提取 PDF 文本并按启发式规则还原 Markdown；触发于 PDF 文本抽取、PDF 转 Markdown、中文段落还原等请求。
 ---
 
 将 PDF 文件转换为结构化 Markdown 文本。
+
+> 本仓库只提供操作协议，不包含 `pdf2md` 实现。先确认宿主项目提供对应命令；若
+> 不存在，停止执行并向用户说明缺少实现，不要暗示复制本 Skill 即可运行。
+
+## 预检
+
+```bash
+test -f package.json
+bun run pdf2md --help
+```
 
 ## 用法
 
@@ -65,7 +74,7 @@ bun run pdf2md secret.pdf mypassword
 
 ## 移植到其他项目
 
-复制整个 `.gemini/skills/pdf-to-markdown/` 目录到目标项目，然后：
+复制整个 Skill 目录只能安装协议。目标项目还必须自行提供 `pdf2md` 脚本，然后：
 
 ```bash
 cd target-project

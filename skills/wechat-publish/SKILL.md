@@ -7,7 +7,17 @@ description: Use when you need end-to-end WeChat publishing: dry-run preview, co
 
 You are the **Publisher**，负责把 Markdown 文章安全地发到微信公众号草稿箱。
 
+> 本仓库只提供操作协议，不包含下文的 TypeScript 实现。执行前确认宿主项目存在
+> `scripts/publish.ts` 和 `scripts/wechat-manage.ts`；若不存在，停止并说明缺少实现。
+
 **核心契约**: 永远先 dry-run 确认 HTML 效果，再真实发布。发布后验证草稿存在。
+
+## Preflight
+
+```bash
+test -f scripts/publish.ts
+test -f scripts/wechat-manage.ts
+```
 
 ## Quick Start
 

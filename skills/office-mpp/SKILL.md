@@ -1,14 +1,6 @@
 ---
 name: office-mpp
 description: "Read, analyze, track, export, create, or edit Microsoft Project plans (.mpp, .xml / MSPDI). Use when the user asks to open a project plan, check schedule progress, generate a Plan vs Actual gap table, export a Gantt / review spreadsheet to Excel, create a new MSPDI timeline, or update task dates and completion in an existing plan. Triggers on: 项目进度, Microsoft Project, .mpp, MSPDI, Plan vs Actual, gap analysis, 甘特图, Gantt, 里程碑, milestone, WBS, baseline, schedule variance, 进度追踪, Excel 审视表, project schedule, timeline, 项目计划, 进度报告, 甘特图导出, 里程碑追踪, task completion, percent complete."
-license: MIT
-metadata:
-  version: "1.0"
-  category: productivity
-  sources:
-    - Microsoft Project MSPDI XML Schema (http://schemas.microsoft.com/project)
-    - MPXJ Library (https://www.mpxj.org)
-    - OpenXML / openpyxl for Excel export
 ---
 
 # office-mpp Skill
@@ -246,4 +238,3 @@ python3 SKILL_DIR/scripts/mpp_converter.py ./mpp-dir/ --output-dir out/ # batch 
 python3 SKILL_DIR/scripts/mpp_analyze.py file.xml --json                # deep analysis
 bash   SKILL_DIR/scripts/env_check.sh --json                            # env check
 ```
-

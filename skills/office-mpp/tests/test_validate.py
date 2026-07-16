@@ -17,15 +17,17 @@ Rule 8 - duration_format: invalid PT string → error
 import pytest
 import subprocess
 import sys
+from pathlib import Path
 
-SAMPLE_XML = "tests/fixtures/sample.xml"
-SCRIPTS_DIR = "scripts"
+SKILL_DIR = Path(__file__).resolve().parents[1]
+SAMPLE_XML = SKILL_DIR / "tests" / "fixtures" / "sample.xml"
+SCRIPTS_DIR = SKILL_DIR / "scripts"
 
 
 def test_valid_sample():
     """sample.xml should pass validation."""
     result = subprocess.run(
-        [sys.executable, f"{SCRIPTS_DIR}/mspdi_validate.py", SAMPLE_XML, "--json"],
+        [sys.executable, SCRIPTS_DIR / "mspdi_validate.py", SAMPLE_XML, "--json"],
         capture_output=True, text=True
     )
     import json

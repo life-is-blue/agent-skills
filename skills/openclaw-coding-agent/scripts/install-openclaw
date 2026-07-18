@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  install-openclaw --workspace DIR [--force]
+  install-openclaw --global [--force]
+
+Installs this adapted Skill as the OpenClaw `coding-agent` override.
+EOF
+}
+
+die() {
+  printf 'E_INPUT: %s\n' "$*" >&2
+  exit 1
+}
+
+workspace=
+global=0
+force=0
+while (($#)); do
+  case "$1" in
+    --workspace) [[ $# -ge 2 ]] || die '--workspace requires a value'; workspace=$2; shift 2 ;;
+    --global) global=1; shift ;;
+    --force) force=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
+if [[ "$global" == 1 && -n "$workspace" ]]; then
+  die 'choose either --workspace or --global'
+fi
+if [[ "$global" == 0 && -z "$workspace" ]]; then
+  die 'choose --workspace DIR or --global'
+fi
+
+script_dir=$(cd "$(dirname "$0")" && pwd -P)
+skill_dir=$(cd "$script_dir/.." && pwd -P)
+if [[ "$global" == 1 ]]; then
+  [[ -n "${HOME:-}" ]] || die 'HOME is required for --global'
+  target="$HOME/.openclaw/skills/coding-agent"
+else
+  [[ -d "$workspace" ]] || die "workspace does not exist: $workspace"
+  workspace=$(cd "$workspace" && pwd -P)
+  target="$workspace/skills/coding-agent"
+fi
+
+if [[ -e "$target" && "$force" != 1 ]]; then
+  die "target already exists: $target (use --force to replace it)"
+fi
+
+parent=$(dirname "$target")
+mkdir -p "$parent"
+staging="$parent/.coding-agent.install.$$"
+trap 'rm -rf "$staging"' EXIT
+rm -rf "$staging"
+mkdir -p "$staging/references" "$staging/scripts"
+
+awk '
+  /^name: openclaw-coding-agent$/ { print "name: coding-agent"; next }
+  { print }
+  /^description:/ {
+    print "metadata: {\"openclaw\":{\"requires\":{\"anyBins\":[\"claude\",\"claude-internal\",\"codex\",\"opencode\"],\"config\":[\"skills.entries.coding-agent.enabled\"]}}}"
+  }
+' "$skill_dir/SKILL.md" >"$staging/SKILL.md"
+cp -R "$skill_dir/references/." "$staging/references/"
+cp -R "$skill_dir/scripts/." "$staging/scripts/"
+
+if [[ -e "$target" ]]; then
+  backup="$parent/.coding-agent.backup.$$"
+  mv "$target" "$backup"
+  if ! mv "$staging" "$target"; then
+    mv "$backup" "$target"
+    die 'install failed; previous target restored'
+  fi
+  rm -rf "$backup"
+else
+  mv "$staging" "$target"
+fi
+
+trap - EXIT
+printf 'installed=%s skill=coding-agent\n' "$target"

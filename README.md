@@ -8,10 +8,12 @@
 
 | Skill | 交付分类 | 能力 |
 |---|---|---|
-| `office-mpp` | bundled | Microsoft Project 读取、进度追踪、Gap 分析、Excel 导出与 MSPDI 编辑 |
-| `search-docs` | adapter | 通过随附 CLI 访问 git-library，执行文档检索与问答 |
+| `coding-agent` | adapter | 跨平台后台调度 Codex、Claude Code、claude-internal 或 OpenCode |
 | `gemini-frontend` | adapter | 通过随附 helper 调用 Gemini CLI 完成前端设计、实现与视觉打磨 |
+| `office-mpp` | bundled | Microsoft Project 读取、进度追踪、Gap 分析、Excel 导出与 MSPDI 编辑 |
+| `openclaw-coding-agent` | adapter | OpenClaw 原生后台进程、通知与隔离 worktree 编程代理调度 |
 | `pdf-to-markdown` | protocol-only | 约定宿主项目中 PDF 文本抽取与 Markdown 还原流程 |
+| `search-docs` | adapter | 通过随附 CLI 访问 git-library，执行文档检索与问答 |
 | `wechat-publish` | protocol-only | 约定宿主项目中微信公众号 dry-run、草稿创建与状态验证流程 |
 
 分类含义：
@@ -63,4 +65,5 @@ python3 -m pytest -q
 
 ## License
 
-仓库默认使用 [MIT License](LICENSE)。Skill 目录中的独立许可证在其适用范围内优先。
+仓库默认使用 [MIT License](LICENSE)。Skill 目录中的独立许可证在其适用范围内优先；
+引入的上游参考材料见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。

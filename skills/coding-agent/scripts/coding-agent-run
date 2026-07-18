@@ -1,0 +1,299 @@
+#!/usr/bin/env bash
+set -uo pipefail
+umask 077
+
+usage() {
+  cat <<'EOF'
+Usage:
+  coding-agent-run start --agent <auto|codex|claude|claude-internal|opencode> \
+    --workdir DIR --prompt-file FILE [--state-dir DIR] [--unsafe]
+  coding-agent-run status SESSION [--state-dir DIR]
+  coding-agent-run log SESSION [--state-dir DIR]
+  coding-agent-run wait SESSION [--state-dir DIR] [--timeout SECONDS]
+  coding-agent-run stop SESSION [--state-dir DIR]
+EOF
+}
+
+die() {
+  printf 'E_INPUT: %s\n' "$*" >&2
+  exit 1
+}
+
+default_state_dir() {
+  if [[ -n "${CODING_AGENT_STATE_DIR:-}" ]]; then
+    printf '%s\n' "$CODING_AGENT_STATE_DIR"
+  elif [[ -n "${XDG_STATE_HOME:-}" ]]; then
+    printf '%s/coding-agent\n' "$XDG_STATE_HOME"
+  elif [[ -n "${HOME:-}" ]]; then
+    printf '%s/.local/state/coding-agent\n' "$HOME"
+  else
+    die 'set --state-dir, CODING_AGENT_STATE_DIR, XDG_STATE_HOME, or HOME'
+  fi
+}
+
+absolute_file() {
+  local input=$1
+  local dir base
+  dir=$(dirname "$input")
+  base=$(basename "$input")
+  [[ -f "$input" ]] || die "file does not exist: $input"
+  (cd "$dir" && printf '%s/%s\n' "$(pwd -P)" "$base")
+}
+
+absolute_dir() {
+  local input=$1
+  [[ -d "$input" ]] || die "directory does not exist: $input"
+  (cd "$input" && pwd -P)
+}
+
+validate_session_id() {
+  [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || die "invalid session ID: $1"
+}
+
+select_agent() {
+  local requested=$1
+  if [[ "$requested" != auto ]]; then
+    command -v "$requested" >/dev/null 2>&1 || die "provider binary not found: $requested"
+    printf '%s\n' "$requested"
+    return
+  fi
+  local candidate
+  for candidate in codex claude claude-internal opencode; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+  die 'no supported provider found (codex, claude, claude-internal, opencode)'
+}
+
+session_status() {
+  local session_dir=$1
+  local pid exit_code
+  [[ -d "$session_dir" ]] || die "unknown session: $(basename "$session_dir")"
+  if [[ -f "$session_dir/exit_code" ]]; then
+    exit_code=$(<"$session_dir/exit_code")
+    if [[ "$exit_code" == 0 ]]; then
+      printf 'completed'
+    else
+      printf 'failed'
+    fi
+    return
+  fi
+  pid=$(<"$session_dir/pid")
+  if kill -0 "$pid" 2>/dev/null; then
+    printf 'running'
+  else
+    printf 'lost'
+  fi
+}
+
+write_completion() {
+  local session_dir=$1
+  local code=$2
+  printf '%s\n' "$code" >"$session_dir/exit_code"
+  date -u +%Y-%m-%dT%H:%M:%SZ >"$session_dir/finished_at"
+}
+
+run_worker() {
+  local session_dir=$1
+  local agent=$2
+  local workdir=$3
+  local unsafe=$4
+  local child_pid rc
+  local -a command_args
+
+  case "$agent" in
+    codex)
+      if [[ "$unsafe" == 1 ]]; then
+        command_args=(codex exec --dangerously-bypass-approvals-and-sandbox -)
+      else
+        command_args=(codex exec --sandbox workspace-write --ask-for-approval never -)
+      fi
+      ;;
+    claude|claude-internal)
+      if [[ "$unsafe" == 1 ]]; then
+        command_args=("$agent" --print --permission-mode bypassPermissions)
+      else
+        command_args=("$agent" --print --permission-mode acceptEdits)
+      fi
+      ;;
+    opencode)
+      command_args=(opencode run)
+      ;;
+    *)
+      write_completion "$session_dir" 1
+      printf 'E_INPUT: unsupported provider: %s\n' "$agent"
+      return 1
+      ;;
+  esac
+
+  cd "$workdir" || {
+    write_completion "$session_dir" 1
+    printf 'E_IO: cannot enter workdir: %s\n' "$workdir"
+    return 1
+  }
+
+  "${command_args[@]}" <"$session_dir/prompt.txt" &
+  child_pid=$!
+  printf '%s\n' "$child_pid" >"$session_dir/child_pid"
+
+  trap 'kill "$child_pid" 2>/dev/null || true; wait "$child_pid" 2>/dev/null || true; write_completion "$session_dir" 143; exit 143' TERM INT
+  wait "$child_pid"
+  rc=$?
+  write_completion "$session_dir" "$rc"
+  return "$rc"
+}
+
+start_session() {
+  local agent=auto workdir= prompt_file= state_dir= unsafe=0
+  while (($#)); do
+    case "$1" in
+      --agent) [[ $# -ge 2 ]] || die '--agent requires a value'; agent=$2; shift 2 ;;
+      --workdir) [[ $# -ge 2 ]] || die '--workdir requires a value'; workdir=$2; shift 2 ;;
+      --prompt-file) [[ $# -ge 2 ]] || die '--prompt-file requires a value'; prompt_file=$2; shift 2 ;;
+      --state-dir) [[ $# -ge 2 ]] || die '--state-dir requires a value'; state_dir=$2; shift 2 ;;
+      --unsafe) unsafe=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "unknown start option: $1" ;;
+    esac
+  done
+
+  [[ -n "$workdir" ]] || die '--workdir is required'
+  [[ -n "$prompt_file" ]] || die '--prompt-file is required'
+  case "$agent" in auto|codex|claude|claude-internal|opencode) ;; *) die "unsupported provider: $agent" ;; esac
+
+  workdir=$(absolute_dir "$workdir") || exit $?
+  prompt_file=$(absolute_file "$prompt_file") || exit $?
+  agent=$(select_agent "$agent") || exit $?
+  if [[ "$unsafe" == 1 && "$agent" == opencode ]]; then
+    die '--unsafe is not supported for opencode; verify a provider-specific flag first'
+  fi
+  state_dir=${state_dir:-$(default_state_dir)}
+  mkdir -p "$state_dir/sessions" || die "cannot create state directory: $state_dir"
+
+  local session_id session_dir log_file self pid
+  session_id="$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+  session_dir="$state_dir/sessions/$session_id"
+  mkdir "$session_dir" || die "cannot create session directory: $session_dir"
+  cp "$prompt_file" "$session_dir/prompt.txt" || die 'cannot copy prompt into session'
+  printf '%s\n' "$agent" >"$session_dir/agent"
+  printf '%s\n' "$workdir" >"$session_dir/workdir"
+  printf '%s\n' "$unsafe" >"$session_dir/unsafe"
+  date -u +%Y-%m-%dT%H:%M:%SZ >"$session_dir/started_at"
+  log_file="$session_dir/output.log"
+  : >"$log_file"
+
+  self="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
+  nohup "$self" _run-worker "$session_dir" "$agent" "$workdir" "$unsafe" \
+    >>"$log_file" 2>&1 </dev/null &
+  pid=$!
+  printf '%s\n' "$pid" >"$session_dir/pid"
+
+  printf 'session_id=%s agent=%s pid=%s log=%s\n' "$session_id" "$agent" "$pid" "$log_file"
+}
+
+parse_session_options() {
+  SESSION_ID=
+  STATE_DIR=
+  TIMEOUT=
+  [[ $# -ge 1 ]] || die 'session ID is required'
+  SESSION_ID=$1
+  validate_session_id "$SESSION_ID"
+  shift
+  while (($#)); do
+    case "$1" in
+      --state-dir) [[ $# -ge 2 ]] || die '--state-dir requires a value'; STATE_DIR=$2; shift 2 ;;
+      --timeout) [[ $# -ge 2 ]] || die '--timeout requires a value'; TIMEOUT=$2; shift 2 ;;
+      *) die "unknown option: $1" ;;
+    esac
+  done
+  STATE_DIR=${STATE_DIR:-$(default_state_dir)}
+  SESSION_DIR="$STATE_DIR/sessions/$SESSION_ID"
+  [[ -d "$SESSION_DIR" ]] || die "unknown session: $SESSION_ID"
+}
+
+show_status() {
+  parse_session_options "$@"
+  [[ -z "$TIMEOUT" ]] || die '--timeout is only valid with wait'
+  local status pid agent exit_part=
+  status=$(session_status "$SESSION_DIR")
+  pid=$(<"$SESSION_DIR/pid")
+  agent=$(<"$SESSION_DIR/agent")
+  [[ -f "$SESSION_DIR/exit_code" ]] && exit_part=" exit_code=$(<"$SESSION_DIR/exit_code")"
+  printf 'session_id=%s status=%s agent=%s pid=%s%s\n' "$SESSION_ID" "$status" "$agent" "$pid" "$exit_part"
+}
+
+show_log() {
+  parse_session_options "$@"
+  [[ -z "$TIMEOUT" ]] || die '--timeout is only valid with wait'
+  cat "$SESSION_DIR/output.log"
+}
+
+wait_session() {
+  parse_session_options "$@"
+  local start now status code
+  if [[ -n "$TIMEOUT" ]]; then
+    [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || die '--timeout must be a non-negative integer'
+  fi
+  start=$(date +%s)
+  while true; do
+    status=$(session_status "$SESSION_DIR")
+    case "$status" in
+      completed|failed)
+        code=$(<"$SESSION_DIR/exit_code")
+        printf 'session_id=%s status=%s exit_code=%s\n' "$SESSION_ID" "$status" "$code"
+        return "$code"
+        ;;
+      lost)
+        printf 'session_id=%s status=lost\n' "$SESSION_ID" >&2
+        return 1
+        ;;
+    esac
+    if [[ -n "$TIMEOUT" ]]; then
+      now=$(date +%s)
+      if ((now - start >= TIMEOUT)); then
+        printf 'session_id=%s status=timeout\n' "$SESSION_ID" >&2
+        return 124
+      fi
+    fi
+    sleep 0.1
+  done
+}
+
+stop_session() {
+  parse_session_options "$@"
+  [[ -z "$TIMEOUT" ]] || die '--timeout is only valid with wait'
+  local status pid child_pid
+  status=$(session_status "$SESSION_DIR")
+  if [[ "$status" != running ]]; then
+    printf 'session_id=%s status=%s\n' "$SESSION_ID" "$status"
+    return 0
+  fi
+  pid=$(<"$SESSION_DIR/pid")
+  if [[ -f "$SESSION_DIR/child_pid" ]]; then
+    child_pid=$(<"$SESSION_DIR/child_pid")
+    kill -TERM "$child_pid" 2>/dev/null || true
+  fi
+  kill -TERM "$pid" 2>/dev/null || true
+  write_completion "$SESSION_DIR" 143
+  printf 'session_id=%s status=stopping\n' "$SESSION_ID"
+}
+
+main() {
+  [[ $# -ge 1 ]] || { usage >&2; exit 1; }
+  local action=$1
+  shift
+  case "$action" in
+    start) start_session "$@" ;;
+    status) show_status "$@" ;;
+    log) show_log "$@" ;;
+    wait) wait_session "$@" ;;
+    stop) stop_session "$@" ;;
+    _run-worker) run_worker "$@" ;;
+    -h|--help|help) usage ;;
+    *) die "unknown action: $action" ;;
+  esac
+}
+
+main "$@"

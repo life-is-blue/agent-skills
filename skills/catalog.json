@@ -2,12 +2,20 @@
   "schema_version": 1,
   "skills": [
     {
+      "name": "coding-agent",
+      "distribution": "adapter"
+    },
+    {
       "name": "gemini-frontend",
       "distribution": "adapter"
     },
     {
       "name": "office-mpp",
       "distribution": "bundled"
+    },
+    {
+      "name": "openclaw-coding-agent",
+      "distribution": "adapter"
     },
     {
       "name": "pdf-to-markdown",

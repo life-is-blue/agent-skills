@@ -1,6 +1,7 @@
 # Gemini headless mode — output and error handling
 
 Reference for `gemini -p "..." -o json` as used by `scripts/gemini-summon.sh`.
+The flag surface was checked locally with Gemini CLI 0.40.1 on 2026-07-19.
 
 ## Why headless
 
@@ -21,7 +22,7 @@ Reference docs: <https://geminicli.com/docs/cli/headless/>
 | `-o json` | Single structured JSON object (one shot). |
 | `-o stream-json` | NDJSON event stream — what the wrapper's `--stream` mode uses. |
 | `--yolo` (`-y`) | Auto-approve all tool actions. Default in this skill (CSS edits are reversible). |
-| `--approval-mode plan` | Read-only; Gemini won't write. The wrapper uses `--read-only` to flip to this behavior (currently by dropping `--yolo`; switch to `--approval-mode plan` if you want strict read-only enforcement). |
+| `--approval-mode plan` | Strict read-only mode used by the wrapper's `--read-only` flag. |
 | `-m <model>` | Override default model. Wrapper passes through `--model`. |
 | `--include-directories` | Add extra workspace dirs. Not used by default — wrapper `cd`s into `--target`. |
 
@@ -42,7 +43,10 @@ Error surface:
 
 ### `-o stream-json` (used by `--stream`)
 
-Newline-delimited JSON. Every line is one event object. Five event types seen in practice (Gemini CLI 0.37):
+Newline-delimited JSON. Every line is one event object. The five event types
+below were observed with Gemini CLI 0.37. A live 0.40.1 schema smoke could not
+be completed in the 2026-07-19 validation environment, so the wrapper continues
+to parse defensively rather than claiming the shape is stable.
 
 | `type` | Key fields | Emitted when |
 |---|---|---|

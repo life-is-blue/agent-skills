@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # gemini-summon.sh — call Gemini CLI in headless mode for front-end work.
 #
-# Why this exists: Gemini's multimodal vision and UI code generation are
-# stronger than Claude's for front-end. This wrapper standardises the call
-# so the main agent doesn't reinvent the prompt, flag set, or output parsing.
+# This wrapper standardises Gemini's prompt, flag set, and output parsing for
+# multimodal front-end work.
 
 set -euo pipefail
 
@@ -24,7 +23,7 @@ Flags
   --target <path>       Working directory (cd before calling). Default: cwd.
   --framework <name>    auto|react|vue|svelte|html  (default: auto)
   --style <name>        auto|tailwind|css|styled    (default: auto)
-  --read-only           Drop --yolo; Gemini proposes but does not write.
+  --read-only           Use plan approval mode; Gemini cannot write.
   --timeout <sec>       Default 300.
   --model <name>        Passthrough to gemini -m. Leave unset by default.
   --raw                 Emit raw Gemini JSON instead of human summary.
@@ -224,7 +223,11 @@ Task: ${BRIEF}${REF_TOKENS}"
 OUTPUT_MODE="json"
 [[ $STREAM -eq 1 ]] && OUTPUT_MODE="stream-json"
 GEMINI_ARGS=(-p "$PROMPT" -o "$OUTPUT_MODE")
-[[ $USE_YOLO -eq 1 ]] && GEMINI_ARGS+=(--yolo)
+if [[ $USE_YOLO -eq 1 ]]; then
+  GEMINI_ARGS+=(--yolo)
+else
+  GEMINI_ARGS+=(--approval-mode plan)
+fi
 [[ -n "$MODEL" ]] && GEMINI_ARGS+=(-m "$MODEL")
 
 # Gemini 0.40+ refuses to run in untrusted directories (exit 55). The wrapper

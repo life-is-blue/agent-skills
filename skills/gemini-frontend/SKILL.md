@@ -1,11 +1,12 @@
 ---
 name: gemini-frontend
-description: Use this skill whenever the user wants front-end design or implementation work — building/updating a page, component, landing page, dashboard, hero section; converting a screenshot/mock/Figma export into code; visual polish (spacing, hierarchy, responsive). Trigger eagerly when the user attaches an image, says "做一个 X 页面/组件", "实现这个设计", "前端实现一下", "改一下样式/间距/排版", or mentions Tailwind/shadcn/Material. Routes the work to Gemini CLI in headless mode because Gemini's multimodal vision and front-end code generation outperform Claude here.
+description: Use this skill for front-end design or implementation work such as building or updating pages and components, converting screenshots or mockups into code, and visual polish for spacing, hierarchy, and responsive behavior. Trigger when the user provides a visual reference or asks for front-end implementation or styling. Routes the work to the bundled Gemini CLI adapter in headless mode.
 ---
 
 # Gemini Frontend Summon
 
-Delegate front-end design and implementation to **Gemini CLI** in headless mode. Gemini's multimodal vision and UI code generation are stronger than Claude's for this slice; this skill is the well-paved path for invoking it.
+Delegate front-end design and implementation to Gemini CLI in headless mode
+through the bundled helper.
 
 ## When to invoke (and when not to)
 
@@ -33,7 +34,7 @@ The judgment call: if the task needs *visual taste* or *consumes an image*, rout
 
 Pick `design` for greenfield, `implement` when there's a target codebase to integrate into, `polish` for tweaks to existing code.
 
-## The multimodal rule (iron law)
+## Pass visual references
 
 If the user message contains an image (screenshot, mock, design reference) — **pass it to Gemini via `--ref`**. Do **not** read the image yourself first and describe it in the brief. Gemini's vision is the entire reason this skill exists; transcribing the image yourself defeats the purpose, wastes context, and loses fidelity.
 
@@ -93,7 +94,7 @@ Flags:
 - `--target <path>` — working directory; helper `cd`s here before calling Gemini. Default: current dir.
 - `--framework auto|react|vue|svelte|html` — auto-detected from `package.json` if `auto`.
 - `--style auto|tailwind|css|styled` — auto-detected from `tailwind.config.*` / deps if `auto`.
-- `--read-only` — drops `--yolo`; Gemini will only propose, not write.
+- `--read-only` — uses `--approval-mode plan` to prevent writes.
 - `--stream` — live timeline to stderr (tool calls, file edits, final stats) + full NDJSON captured to `/tmp/gemini-summon-*.ndjson`. Use for `design`/`implement` runs that may take > 30s; skip for short `--read-only` reviews.
 - `--timeout <sec>` — default 300.
 - `--model <name>` — passthrough to `gemini -m`. Leave unset by default.
@@ -107,14 +108,17 @@ scripts/gemini-summon.sh --follow latest       # tail -f the most recent session
 scripts/gemini-summon.sh --follow <path.ndjson>
 ```
 
-The helper is **yolo by default** (auto-writes files). Front-end edits are reversible via `git restore`.
+Write modes use `--yolo` and can modify files without approval. Use them only
+in a trusted worktree and inspect the resulting diff. Use `--read-only` for a
+strict plan-mode review.
 
 ## What the helper does
 
 1. **Precheck**: `command -v gemini`. If missing, prints install instructions (`npm install -g @google/gemini-cli`) and exits 127.
 2. **Auto-detect** framework and style system from the target directory.
 3. **Build prompt** with a mode-specific system prefix + the user's brief + `@path` references.
-4. **Invoke** `gemini -p "<prompt>" -o json --yolo` (or without yolo for `--read-only`) under `timeout`.
+4. **Invoke** `gemini -p "<prompt>" -o json --yolo` for write mode or
+   `--approval-mode plan` for `--read-only`, under `timeout`.
 5. **Parse** JSON output, surface `error` field if present, otherwise print Gemini's `response` plus a one-line stat header.
 
 See `references/headless-output.md` for the JSON schema and error handling.

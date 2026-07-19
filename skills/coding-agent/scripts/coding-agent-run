@@ -5,7 +5,7 @@ umask 077
 usage() {
   cat <<'EOF'
 Usage:
-  coding-agent-run start --agent <auto|codex|claude|claude-internal|opencode> \
+  coding-agent-run start --agent <auto|codex|claude|tclaude|opencode> \
     --workdir DIR --prompt-file FILE [--state-dir DIR] [--unsafe]
   coding-agent-run status SESSION [--state-dir DIR]
   coding-agent-run log SESSION [--state-dir DIR]
@@ -58,13 +58,13 @@ select_agent() {
     return
   fi
   local candidate
-  for candidate in codex claude claude-internal opencode; do
+  for candidate in codex claude tclaude opencode; do
     if command -v "$candidate" >/dev/null 2>&1; then
       printf '%s\n' "$candidate"
       return
     fi
   done
-  die 'no supported provider found (codex, claude, claude-internal, opencode)'
+  die 'no supported provider found (codex, claude, tclaude, opencode)'
 }
 
 session_status() {
@@ -111,7 +111,7 @@ run_worker() {
         command_args=(codex exec --sandbox workspace-write --ask-for-approval never -)
       fi
       ;;
-    claude|claude-internal)
+    claude|tclaude)
       if [[ "$unsafe" == 1 ]]; then
         command_args=("$agent" --print --permission-mode bypassPermissions)
       else
@@ -161,7 +161,7 @@ start_session() {
 
   [[ -n "$workdir" ]] || die '--workdir is required'
   [[ -n "$prompt_file" ]] || die '--prompt-file is required'
-  case "$agent" in auto|codex|claude|claude-internal|opencode) ;; *) die "unsupported provider: $agent" ;; esac
+  case "$agent" in auto|codex|claude|tclaude|opencode) ;; *) die "unsupported provider: $agent" ;; esac
 
   workdir=$(absolute_dir "$workdir") || exit $?
   prompt_file=$(absolute_file "$prompt_file") || exit $?

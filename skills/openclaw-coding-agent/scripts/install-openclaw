@@ -62,7 +62,7 @@ awk '
   /^name: openclaw-coding-agent$/ { print "name: coding-agent"; next }
   { print }
   /^description:/ {
-    print "metadata: {\"openclaw\":{\"requires\":{\"anyBins\":[\"claude\",\"claude-internal\",\"codex\",\"opencode\"],\"config\":[\"skills.entries.coding-agent.enabled\"]}}}"
+    print "metadata: {\"openclaw\":{\"requires\":{\"anyBins\":[\"claude\",\"tclaude\",\"codex\",\"opencode\"],\"config\":[\"skills.entries.coding-agent.enabled\"]}}}"
   }
 ' "$skill_dir/SKILL.md" >"$staging/SKILL.md"
 cp -R "$skill_dir/references/." "$staging/references/"

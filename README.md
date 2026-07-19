@@ -8,7 +8,7 @@
 
 | Skill | 交付分类 | 能力 |
 |---|---|---|
-| `coding-agent` | adapter | 跨平台后台调度 Codex、Claude Code、claude-internal 或 OpenCode |
+| `coding-agent` | adapter | 跨平台后台调度 Codex、Claude Code、TClaude 或 OpenCode |
 | `gemini-frontend` | adapter | 通过随附 helper 调用 Gemini CLI 完成前端设计、实现与视觉打磨 |
 | `office-mpp` | bundled | Microsoft Project 读取、进度追踪、Gap 分析、Excel 导出与 MSPDI 编辑 |
 | `openclaw-coding-agent` | adapter | OpenClaw 原生后台进程、通知与隔离 worktree 编程代理调度 |

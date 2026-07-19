@@ -16,10 +16,10 @@ OpenClaw skill as an immutable, attributed reference.
   only in `openclaw-coding-agent`.
 - Make `coding-agent` independent of OpenClaw. Ship a Bash runner with
   `start/status/log/wait/stop` actions and support `codex`, `claude`,
-  `claude-internal`, and `opencode`.
+  `tclaude`, and `opencode`.
 - Default to sandboxed/non-bypass provider modes. Require explicit `--unsafe`
   for provider permission bypass flags.
-- Document only locally verified, portable `claude-internal` CLI behavior; do
+- Document only locally verified, portable `tclaude` CLI behavior; do
   not record internal URLs, credentials, authentication workflows, or company
   environment details.
 - Do not run live model calls in automated tests. Test the runner with fake
@@ -28,7 +28,7 @@ OpenClaw skill as an immutable, attributed reference.
 ## Interfaces
 
 ```text
-coding-agent-run start --agent <auto|codex|claude|claude-internal|opencode> \
+coding-agent-run start --agent <auto|codex|claude|tclaude|opencode> \
   --workdir DIR --prompt-file FILE [--state-dir DIR] [--unsafe]
 coding-agent-run status SESSION [--state-dir DIR]
 coding-agent-run log SESSION [--state-dir DIR]

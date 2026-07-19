@@ -104,7 +104,7 @@ sandboxed.
 Codex:
 
 ```text
-bash pty:true background:true workdir:/path/worktree command:"codex exec --sandbox workspace-write --ask-for-approval never - < \"$PROMPT\""
+bash pty:true background:true workdir:/path/worktree command:"codex --ask-for-approval never exec --sandbox workspace-write - < \"$PROMPT\""
 ```
 
 Claude Code:

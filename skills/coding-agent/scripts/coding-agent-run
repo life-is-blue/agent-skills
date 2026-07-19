@@ -5,7 +5,7 @@ umask 077
 usage() {
   cat <<'EOF'
 Usage:
-  coding-agent-run start --agent <auto|codex|claude|tclaude|opencode> \
+  coding-agent-run start --agent <auto|codex|claude|tclaude|codebuddy|opencode> \
     --workdir DIR --prompt-file FILE [--state-dir DIR] [--unsafe]
   coding-agent-run status SESSION [--state-dir DIR]
   coding-agent-run log SESSION [--state-dir DIR]
@@ -58,13 +58,13 @@ select_agent() {
     return
   fi
   local candidate
-  for candidate in codex claude tclaude opencode; do
+  for candidate in codex claude tclaude codebuddy opencode; do
     if command -v "$candidate" >/dev/null 2>&1; then
       printf '%s\n' "$candidate"
       return
     fi
   done
-  die 'no supported provider found (codex, claude, tclaude, opencode)'
+  die 'no supported provider found (codex, claude, tclaude, codebuddy, opencode)'
 }
 
 session_status() {
@@ -108,7 +108,7 @@ run_worker() {
       if [[ "$unsafe" == 1 ]]; then
         command_args=(codex exec --dangerously-bypass-approvals-and-sandbox -)
       else
-        command_args=(codex exec --sandbox workspace-write --ask-for-approval never -)
+        command_args=(codex --ask-for-approval never exec --sandbox workspace-write -)
       fi
       ;;
     claude|tclaude)
@@ -116,6 +116,13 @@ run_worker() {
         command_args=("$agent" --print --permission-mode bypassPermissions)
       else
         command_args=("$agent" --print --permission-mode acceptEdits)
+      fi
+      ;;
+    codebuddy)
+      if [[ "$unsafe" == 1 ]]; then
+        command_args=(codebuddy -p --dangerously-skip-permissions)
+      else
+        command_args=(codebuddy -p --permission-mode auto)
       fi
       ;;
     opencode)
@@ -161,7 +168,7 @@ start_session() {
 
   [[ -n "$workdir" ]] || die '--workdir is required'
   [[ -n "$prompt_file" ]] || die '--prompt-file is required'
-  case "$agent" in auto|codex|claude|tclaude|opencode) ;; *) die "unsupported provider: $agent" ;; esac
+  case "$agent" in auto|codex|claude|tclaude|codebuddy|opencode) ;; *) die "unsupported provider: $agent" ;; esac
 
   workdir=$(absolute_dir "$workdir") || exit $?
   prompt_file=$(absolute_file "$prompt_file") || exit $?

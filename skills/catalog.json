@@ -26,6 +26,10 @@
       "distribution": "adapter"
     },
     {
+      "name": "skill-evolve-lite",
+      "distribution": "protocol-only"
+    },
+    {
       "name": "wechat-publish",
       "distribution": "protocol-only"
     }

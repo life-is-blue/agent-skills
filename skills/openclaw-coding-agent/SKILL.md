@@ -1,6 +1,6 @@
 ---
 name: openclaw-coding-agent
-description: Delegate substantial coding work from OpenClaw to Codex, Claude Code, claude-internal, or OpenCode as monitored background workers. Use for feature builds, large refactors, PR reviews, and issue-to-PR loops that need OpenClaw process sessions and completion notifications; do not use for simple edits or read-only lookup.
+description: Delegate substantial coding work from OpenClaw to Codex, Claude Code, TClaude, or OpenCode as monitored background workers. Use for feature builds, large refactors, PR reviews, and issue-to-PR loops that need OpenClaw process sessions and completion notifications; do not use for simple edits or read-only lookup.
 ---
 
 # OpenClaw Coding Agent
@@ -30,20 +30,19 @@ override unless `--force` is explicit. Do not install the portable
 
 1. Honor an explicitly requested provider.
 2. Otherwise choose the first suitable installed provider: `codex`, `claude`,
-   `claude-internal`, then `opencode`.
+   `tclaude`, then `opencode`.
 3. Verify the selected binary with `command -v` and local `--help` before using
    a launch form that has not been smoke-tested on this host.
 4. Do the work directly when it is a simple edit, a quick explanation, or a
    read-only lookup.
 
-Read [claude-internal compatibility](references/claude-internal.md) before
-selecting `claude-internal`.
+Read [TClaude compatibility](references/tclaude.md) before selecting `tclaude`.
 
 ## Hard rules
 
 - Always launch the worker with `background:true`.
-- Use `pty:true` for Codex and OpenCode. Do not request a PTY for Claude print
-  mode or claude-internal print mode.
+- Use `pty:true` for Codex and OpenCode. Do not request a PTY for Claude or
+  TClaude print mode.
 - Capture a real OpenClaw notification route before launch. If none exists,
   state that automatic completion notification is unavailable.
 - Monitor through OpenClaw `process`; do not kill a slow worker without cause.
@@ -114,10 +113,10 @@ Claude Code:
 bash background:true workdir:/path/worktree command:"claude --permission-mode acceptEdits --print < \"$PROMPT\""
 ```
 
-claude-internal:
+TClaude:
 
 ```text
-bash background:true workdir:/path/worktree command:"claude-internal --permission-mode acceptEdits --print < \"$PROMPT\""
+bash background:true workdir:/path/worktree command:"tclaude --permission-mode acceptEdits --print < \"$PROMPT\""
 ```
 
 OpenCode:

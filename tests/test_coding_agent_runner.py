@@ -75,10 +75,10 @@ def test_start_wait_status_and_log_with_fake_codex(tmp_path: Path):
     assert "implement the fixture" in log.stdout
 
 
-def test_claude_internal_unsafe_mapping_is_explicit(tmp_path: Path):
+def test_tclaude_safe_mapping_is_default(tmp_path: Path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    make_provider(bin_dir, "claude-internal", 'printf "args:%s\\n" "$*"\ncat >/dev/null\n')
+    make_provider(bin_dir, "tclaude", 'printf "args:%s\\n" "$*"\ncat >/dev/null\n')
     prompt = tmp_path / "prompt.txt"
     prompt.write_text("review only\n", encoding="utf-8")
     state = tmp_path / "state"
@@ -87,7 +87,36 @@ def test_claude_internal_unsafe_mapping_is_explicit(tmp_path: Path):
     started = run_runner(
         "start",
         "--agent",
-        "claude-internal",
+        "tclaude",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--state-dir",
+        state,
+        env=env,
+    )
+    sid = session_id(started.stdout)
+    run_runner("wait", sid, "--state-dir", state, "--timeout", "5", env=env)
+    log = run_runner("log", sid, "--state-dir", state, env=env)
+
+    assert "--print --permission-mode acceptEdits" in log.stdout
+    assert "bypassPermissions" not in log.stdout
+
+
+def test_tclaude_unsafe_mapping_is_explicit(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "tclaude", 'printf "args:%s\\n" "$*"\ncat >/dev/null\n')
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("review only\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+
+    started = run_runner(
+        "start",
+        "--agent",
+        "tclaude",
         "--workdir",
         tmp_path,
         "--prompt-file",
@@ -187,6 +216,7 @@ def test_openclaw_installer_materializes_coding_agent_override(tmp_path: Path):
     assert '"skills.entries.coding-agent.enabled"' in (
         target / "SKILL.md"
     ).read_text(encoding="utf-8")
+    assert '"tclaude"' in (target / "SKILL.md").read_text(encoding="utf-8")
     assert (target / "references" / "upstream-SKILL.md").is_file()
     assert (target / "scripts" / "install-openclaw").is_file()
 

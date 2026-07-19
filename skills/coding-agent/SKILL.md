@@ -1,6 +1,6 @@
 ---
 name: coding-agent
-description: Delegate substantial coding work to Codex, Claude Code, TClaude, or OpenCode through a portable monitored background runner. Use for feature implementation, large refactors, code reviews, and long issue-to-PR work; do not use for simple edits, read-only lookup, or tasks that must remain in the current agent thread.
+description: Delegate substantial coding work to Codex, Claude Code, TClaude, CodeBuddy Code, or OpenCode through a portable monitored background runner. Use for feature implementation, large refactors, code reviews, and long issue-to-PR work; do not use for simple edits, read-only lookup, or tasks that must remain in the current agent thread.
 ---
 
 # Coding Agent
@@ -12,7 +12,7 @@ CLIs without depending on OpenClaw.
 
 - Honor an explicitly requested provider.
 - With `--agent auto`, select the first installed provider in this order:
-  Codex, Claude Code, TClaude, OpenCode.
+  Codex, Claude Code, TClaude, CodeBuddy Code, OpenCode.
 - Handle simple edits and read-only questions directly.
 - Do not silently switch providers after a failure. Report the failure and
   retry or ask.
@@ -103,4 +103,5 @@ report only milestones, questions, failures, user action, and completion.
 - [Codex CLI](references/codex.md)
 - [Claude Code](references/claude-code.md)
 - [TClaude](references/tclaude.md)
+- [CodeBuddy Code](references/codebuddy.md)
 - [OpenCode](references/opencode.md)

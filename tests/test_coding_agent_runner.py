@@ -71,7 +71,7 @@ def test_start_wait_status_and_log_with_fake_codex(tmp_path: Path):
     assert "status=completed" in waited.stdout
     assert "status=completed" in status.stdout
     assert "agent=codex" in status.stdout
-    assert "--sandbox workspace-write --ask-for-approval never -" in log.stdout
+    assert "--ask-for-approval never exec --sandbox workspace-write -" in log.stdout
     assert "implement the fixture" in log.stdout
 
 
@@ -131,6 +131,93 @@ def test_tclaude_unsafe_mapping_is_explicit(tmp_path: Path):
     log = run_runner("log", sid, "--state-dir", state, env=env)
 
     assert "--print --permission-mode bypassPermissions" in log.stdout
+
+
+def test_codebuddy_safe_mapping_uses_auto_mode(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "codebuddy", 'printf "args:%s\\n" "$*"\ncat >/dev/null\n')
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("implement safely\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+
+    started = run_runner(
+        "start",
+        "--agent",
+        "codebuddy",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--state-dir",
+        state,
+        env=env,
+    )
+    sid = session_id(started.stdout)
+    run_runner("wait", sid, "--state-dir", state, "--timeout", "5", env=env)
+    log = run_runner("log", sid, "--state-dir", state, env=env)
+
+    assert "-p --permission-mode auto" in log.stdout
+    assert "dangerously-skip-permissions" not in log.stdout
+
+
+def test_codebuddy_unsafe_mapping_is_explicit(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "codebuddy", 'printf "args:%s\\n" "$*"\ncat >/dev/null\n')
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("isolated fixture\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+
+    started = run_runner(
+        "start",
+        "--agent",
+        "codebuddy",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--state-dir",
+        state,
+        "--unsafe",
+        env=env,
+    )
+    sid = session_id(started.stdout)
+    run_runner("wait", sid, "--state-dir", state, "--timeout", "5", env=env)
+    log = run_runner("log", sid, "--state-dir", state, env=env)
+
+    assert "-p --dangerously-skip-permissions" in log.stdout
+
+
+def test_auto_selects_codebuddy_before_opencode(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "codebuddy", 'printf "codebuddy:%s\\n" "$*"\ncat >/dev/null\n')
+    make_provider(bin_dir, "opencode", 'printf "opencode:%s\\n" "$*"\ncat >/dev/null\n')
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("select provider\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+
+    started = run_runner(
+        "start",
+        "--agent",
+        "auto",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--state-dir",
+        state,
+        env=env,
+    )
+    sid = session_id(started.stdout)
+    run_runner("wait", sid, "--state-dir", state, "--timeout", "5", env=env)
+    status = run_runner("status", sid, "--state-dir", state, env=env)
+
+    assert "agent=codebuddy" in status.stdout
 
 
 def test_stop_marks_running_worker_failed(tmp_path: Path):

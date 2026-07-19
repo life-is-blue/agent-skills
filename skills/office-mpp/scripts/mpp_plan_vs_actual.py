@@ -8,7 +8,7 @@ Usage:
     # Single file, single date
     python3 mpp_plan_vs_actual.py <file.mpp>
 
-    # Multiple files merged
+    # Multiple files concatenated; workstream names must be unique
     python3 mpp_plan_vs_actual.py file1.mpp file2.mpp
 
     # Weekly forecast (this week, next week, W+2)
@@ -88,29 +88,29 @@ def _read_mpp_tasks(file_path):
 
 def _read_xml_tasks(file_path):
     """Read MSPDI XML and return flat list of task dicts."""
-    from helpers.mspdi_ns import findall, findtext
+    from helpers.mspdi_ns import findall, get_text
     from helpers.duration_utils import pt_to_hours
     import xml.etree.ElementTree as ET
 
     tree = ET.parse(file_path)
     root = tree.getroot()
-    title = findtext(root, "Title", os.path.basename(file_path))
+    title = get_text(root, "Title", os.path.basename(file_path))
 
     tasks = []
     for task_el in findall(root, "Tasks/Task"):
-        name = findtext(task_el, "Name", "")
+        name = get_text(task_el, "Name", "")
         if not name:
             continue
         tasks.append({
             "name": name,
-            "outline_level": int(findtext(task_el, "OutlineLevel", "0")),
-            "summary": findtext(task_el, "Summary", "0") == "1",
-            "finish": findtext(task_el, "Finish", ""),
-            "baseline_finish": findtext(task_el, "BaselineFinish", ""),
+            "outline_level": int(get_text(task_el, "OutlineLevel", "0")),
+            "summary": get_text(task_el, "Summary", "0") == "1",
+            "finish": get_text(task_el, "Finish", ""),
+            "baseline_finish": get_text(task_el, "BaselineFinish", ""),
             "finish_variance": "",
-            "percent_complete": float(findtext(task_el, "PercentComplete", "0")),
-            "duration_hours": pt_to_hours(findtext(task_el, "Duration", "PT0H0M0S")),
-            "wbs": findtext(task_el, "WBS", ""),
+            "percent_complete": float(get_text(task_el, "PercentComplete", "0")),
+            "duration_hours": pt_to_hours(get_text(task_el, "Duration", "PT0H0M0S")),
+            "wbs": get_text(task_el, "WBS", ""),
             "planned_pct": None,
             "gap_pct": None,
         })

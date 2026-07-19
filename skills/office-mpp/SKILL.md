@@ -57,7 +57,7 @@ Supports both `.mpp` (MPXJ + JVM required) and `.xml` MSPDI (pure Python). The r
 # Single file, current date
 python3 SKILL_DIR/scripts/mpp_plan_vs_actual.py project.mpp
 
-# Multiple files merged (workstreams combined)
+# Multiple files concatenated; keep workstream names unique across inputs
 python3 SKILL_DIR/scripts/mpp_plan_vs_actual.py bd.mpp genai.mpp
 
 # Weekly forecast: this week + N-1 future Fridays
@@ -76,14 +76,19 @@ python3 SKILL_DIR/scripts/mpp_plan_vs_actual.py project.mpp --weeks 3 --excel ga
 python3 SKILL_DIR/scripts/mpp_plan_vs_actual.py project.mpp --json
 ```
 
-**CRITICAL — GAP RULES:**
+**GAP rules:**
 
-1. **读优先 (Read-first)**: Read `Number4` (Plan%) and `Number3` (Gap%) from MPP native fields. Fall back to computation only when fields are absent. Output marks `"source": "mpp"` vs `"source": "computed"` for each value.
-2. **Leaf tasks only** for Milestone Task count (summary tasks excluded).
-3. **Duration-weighted Actual**: `sum(duration_hours × %complete) / total_duration_hours × leaf_count`. Never simple average.
-4. **Never recompute if native fields exist** — §7.8 of `xlsmart-project/04-tech-research/tech-proposals/ai-project-management-practices-exploration.md` documents up to 40-point divergence when ignoring MPP fields.
+1. For binary `.mpp`, read Number4 (Plan%) and Number3 (Gap%) from the
+   top-level workstream task when available. MSPDI XML currently does not map
+   these custom fields and always uses computed values.
+2. Emit one workstream-level `source`: `"mpp"` when native Plan% is used,
+   otherwise `"computed"`.
+3. Count leaf tasks only; exclude summary tasks.
+4. Compute Actual with duration weighting:
+   `sum(duration_hours × %complete) / total_duration_hours × leaf_count`.
 
-See `references/gap.md` for algorithm details, `--weeks`/`--dates`/workstream merge logic.
+See `references/gap.md` for calculation details, date options, and multi-file
+limitations.
 
 ---
 
@@ -199,8 +204,12 @@ python3 SKILL_DIR/scripts/mspdi_validate.py file.xml --fix --output fixed.xml  #
 3. **Summary rollup** — Parent summary fields (`Start`, `Finish`, `PercentComplete`) are computed from children; never set directly.
 4. **Namespace** — Always `http://schemas.microsoft.com/project`. Never omit or alias.
 5. **Duration format** — `PT###H##M##S` (e.g., `PT760H0M0S` = 95 work-days × 8h).
-6. **Critical field** — Task `critical` boolean indicates tasks on the critical path. Read from MPP Number4/Number3 fields or computed by MPP engine.
-7. **Source tracking** — All tasks include `planned_pct_source` and `gap_pct_source` fields marking whether values came from MPP native fields ("mpp") or were computed ("computed").
+6. **Critical field** — Read `critical` from MPXJ `getCritical()` for `.mpp`
+   and the MSPDI `<Critical>` element for XML.
+7. **Source tracking** — The reader sets `planned_pct_source` and
+   `gap_pct_source` to `"mpp"` only when the corresponding native `.mpp`
+   custom field exists. The fields are empty for XML and absent native values;
+   GAP calculation separately reports its workstream-level `source`.
 
 ---
 

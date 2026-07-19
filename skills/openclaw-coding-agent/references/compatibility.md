@@ -2,7 +2,7 @@
 
 | Provider | OpenClaw PTY | Non-interactive command | Default permission posture |
 |---|---:|---|---|
-| Codex | yes | `codex exec ... -` | workspace-write sandbox, never ask |
+| Codex | yes | `codex --ask-for-approval never exec --sandbox workspace-write -` | workspace-write sandbox, never ask |
 | Claude Code | no | `claude --print` | `acceptEdits` |
 | TClaude | no | `tclaude --print` | `acceptEdits` |
 | OpenCode | yes | `opencode run` | provider default |

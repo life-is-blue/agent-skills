@@ -1,6 +1,6 @@
 # OpenCode
 
-OpenCode was not installed in the validation environment on 2026-07-18. The
+OpenCode was not installed in the validation environment on 2026-07-19. The
 adapter follows the upstream OpenClaw launch contract:
 
 ```bash

@@ -1,34 +1,39 @@
-# AGENTS.md - 智能体操作规范
+# AGENTS.md
 
-## 核心原则
+## Workflow
 
-1. **仓库即真相**: 所有决策记录在仓库内，不依赖外部讨论。
-2. **Skill 独立封装**: 每个技能通过 `skills/<name>/SKILL.md` 完整描述用法和协议。
+1. Read the relevant `skills/<name>/SKILL.md` and its routed references.
+2. Inspect the worktree and preserve unrelated user changes.
+3. Make the smallest complete change and update durable documentation.
+4. Run `python3 scripts/validate_repo.py` and relevant tests.
 
-## 智能体工作流
+Do not create task plans, audit reports, changelogs, or duplicate READMEs unless
+they are required runtime or legal artifacts. Git history records completed
+change history; repository documents describe current behavior.
 
-1. **Research**: 阅读相关 `skills/` 目录确认任务情境。
-2. **Plan**: 在 `docs/plans/` 创建任务计划。
-3. **Act**: 执行变更。
-4. **Validate**: 运行 `python3 scripts/validate_repo.py` 和相关领域测试，更新文档。
+## Skill contract
 
-## Skill 治理
+- Use `skills/<name>/SKILL.md` as the Skill entrypoint.
+- Keep frontmatter to `name` and `description`; make the directory and name
+  identical lowercase hyphen-case.
+- Put triggering conditions in `description`, core procedure in `SKILL.md`, and
+  optional detail in directly linked `references/` files.
+- Create only resources the Skill uses. State dependencies, commands, inputs,
+  outputs, side effects, and failure handling without claiming host-provided
+  code is bundled.
+- Update `skills/catalog.json` when adding, deleting, or renaming a Skill.
+- Classify delivery as `bundled`, `adapter`, or `protocol-only` according to the
+  implementation actually present in the Skill directory.
+- Pin upstream snapshots to a commit and retain their hash, provenance, and
+  license. Do not edit a snapshot in place.
 
-1. `SKILL.md` frontmatter 只保留 `name` 和 `description`。
-2. 新增、删除或重命名 Skill 时同步更新 `skills/catalog.json`。
-3. 根据实际交付形态标记 `bundled`、`adapter` 或 `protocol-only`，不得把宿主项目
-   中的脚本描述成本仓库随附实现。
-4. 详细准入规则以 `CONTRIBUTING.md` 为准。
+## Verification
 
-## 避坑表
-
-| 坑 | 解法 |
-|---|---|
-| 装 skill 到 `<project>/.claude/skills/` 后 Claude Code 报 `Unknown skill: <name>`，但脚本直接 `bash` 调能跑 | 必须在 `.claude/skills/` 所在目录启动 Claude Code（`cd <project> && claude`），不是在父目录——Claude 只扫当前 workspace 的 skill 目录。Linux 实测软链在正确 CWD 下可用；macOS 上软链有已知 bug [#14836](https://github.com/anthropics/claude-code/issues/14836)，跨平台保险用 `cp -r` |
-| 子进程报 `rg: command not found`，但 Claude Code 终端里 `rg` 能用 | `rg` 在 Claude Code 终端里是 bash function 不是真二进制，子进程拿不到。装系统包：`sudo dnf install -y ripgrep`（Debian 系 `apt`、macOS `brew`） |
-| 外部 CLI 的 flag 名或 JSON 字段名，WebFetch 回的文档描述对不上实际行为 | 以本地 `<cmd> --help` + 最小 smoke 调用为准。例：Gemini 的流式输出实际是 `-o stream-json`，但第三方文档站给的是 `streaming-json`；事件字段也只有实跑一次才知道真实 shape |
-
-新增坑：现象 + 解法两列即可，必要时附一个查证链接。
-
----
-*Version: 0.5.0*
+- Treat local `<command> --help` plus a minimal smoke as the authority for an
+  external CLI. Do not rely on a documentation description when behavior
+  differs.
+- Keep network, paid API, secret-dependent, and external-state-changing calls
+  out of CI.
+- Review diffs and structured results; a zero exit code alone is insufficient.
+- Do not describe the current pytest suite as complete domain coverage:
+  `office-mpp` still contains placeholder tests.

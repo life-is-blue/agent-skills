@@ -1,7 +1,9 @@
 import json
 import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -36,6 +38,13 @@ set -u
 cat > /dev/null
 echo '{"type":"thread.started","thread_id":"slow-thread"}'
 exec sleep 60
+"""
+
+EARLY_EXIT_CODEX = """#!/usr/bin/env bash
+set -u
+printf '%s\\n' "$*" > "$FAKE_CODEX_ARGV"
+echo 'codex: not authenticated' >&2
+exit 1
 """
 
 
@@ -244,6 +253,110 @@ def test_background_job_can_be_cancelled(workspace: dict):
     result = run(workspace, "result", job_id, "--json")
     assert result.returncode == 143
     assert json.loads(result.stdout)["status"] == "cancelled"
+
+
+def test_a_worker_refuses_to_run_an_already_cancelled_job(workspace: dict):
+    """A cancel that lands before the worker starts must not be overwritten."""
+    install_codex(workspace, SLOW_CODEX)
+    launched = json.loads(
+        run(workspace, "start", "--workdir", workspace["repo"], "--prompt", "slow", "--background", "--json").stdout
+    )
+    job_dir = Path(launched["job_dir"])
+    assert json.loads(run(workspace, "cancel", launched["job_id"], "--json").stdout)["status"] == "cancelled"
+
+    # Replay the worker against the cancelled job with a Codex that would exit
+    # instantly, so a missing guard shows up as a completed run.
+    install_codex(workspace)
+    argv_file = Path(workspace["env"]["FAKE_CODEX_ARGV"])
+    argv_file.unlink(missing_ok=True)
+    replayed = subprocess.run(
+        [sys.executable, str(RUNNER), "_worker", "--job-dir", str(job_dir)],
+        capture_output=True,
+        text=True,
+        env=workspace["env"],
+        check=False,
+    )
+
+    assert replayed.returncode == 143, replayed.stderr
+    assert not argv_file.exists(), "worker launched Codex for a cancelled job"
+    assert json.loads(run(workspace, "result", launched["job_id"], "--json").stdout)["status"] == "cancelled"
+
+
+def test_interrupting_a_foreground_run_terminates_codex(workspace: dict):
+    install_codex(workspace, SLOW_CODEX)
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            str(RUNNER),
+            "start",
+            "--workdir",
+            str(workspace["repo"]),
+            "--prompt",
+            "slow",
+            "--state-dir",
+            str(workspace["state"]),
+            "--json",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=workspace["env"],
+    )
+    codex_pid = wait_for_codex_child(workspace)
+    proc.send_signal(signal.SIGINT)
+    stdout, _ = proc.communicate(timeout=30)
+
+    envelope = json.loads(stdout)
+    assert proc.returncode == 143
+    assert envelope["status"] == "cancelled"
+    assert not pid_alive(codex_pid)
+
+
+def test_codex_exiting_before_the_prompt_is_delivered_reports_failure(workspace: dict):
+    install_codex(workspace, EARLY_EXIT_CODEX)
+    prompt = workspace["tmp"] / "big-prompt.txt"
+    prompt.write_text("x" * 2_000_000, encoding="utf-8")
+
+    result = run(workspace, "start", "--workdir", workspace["repo"], "--prompt-file", prompt, "--json")
+    envelope = json.loads(result.stdout)
+
+    assert result.returncode == 2
+    assert envelope["status"] == "failed"
+    assert "Traceback" not in result.stderr
+
+
+def pid_alive(pid: int | None) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def recorded_child_pid(workspace: dict) -> int | None:
+    """Read the Codex pid the runner recorded, from any job in this workspace."""
+    jobs = workspace["state"] / "jobs"
+    for job_file in jobs.glob("*/job.json") if jobs.is_dir() else []:
+        try:
+            job = json.loads(job_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if job.get("child_pid"):
+            return int(job["child_pid"])
+    return None
+
+
+def wait_for_codex_child(workspace: dict, timeout: float = 15.0) -> int:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        pid = recorded_child_pid(workspace)
+        if pid:
+            return pid
+        time.sleep(0.2)
+    pytest.fail("codex child process was never recorded")
 
 
 def test_status_lists_jobs_and_logs_expose_stderr(workspace: dict):

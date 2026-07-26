@@ -25,8 +25,12 @@ codex -C <workdir> -s <sandbox> -a never [-m MODEL] [-c model_reasoning_effort="
 | Kind | Command |
 |---|---|
 | task | `codex <globals> exec --json -o FINAL [--output-schema S] -` |
-| resume | `codex <globals> exec resume <THREAD_ID> --json -o FINAL -` |
+| resume | `codex <globals> exec resume <THREAD_ID> --json -o FINAL [--output-schema S] -` |
 | review | `codex <globals> exec review --json -o FINAL [--uncommitted\|--base REF\|--commit SHA] [-]` |
+
+`exec`, `exec resume`, and `exec review` each accept `--json`, `-o`, and
+`--output-schema`, so the adapter forwards `--output-schema` on task and resume
+runs alike.
 
 The trailing `-` makes Codex read the prompt from stdin, which avoids argument
 length and quoting limits. The adapter always supplies stdin explicitly

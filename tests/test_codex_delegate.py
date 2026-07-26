@@ -366,6 +366,27 @@ def test_ps_fallback_matches_whole_arguments_including_spaces(command_line, toke
     assert load_runner_module().command_line_has_token(command_line, token) is expected
 
 
+def test_ps_fallback_asks_for_untruncated_output(tmp_path: Path):
+    """BSD ps truncates to display width without -ww, hiding the job path."""
+    module = load_runner_module()
+    recorder = tmp_path / "ps-args.txt"
+    fake_ps = tmp_path / "ps"
+    fake_ps.write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" > {recorder}\necho "codex -o /jobs/task-1/final.txt"\n',
+        encoding="utf-8",
+    )
+    fake_ps.chmod(0o755)
+
+    env_path = os.environ["PATH"]
+    os.environ["PATH"] = f"{tmp_path}:{env_path}"
+    try:
+        assert module.ps_command_line(1234).strip() == "codex -o /jobs/task-1/final.txt"
+    finally:
+        os.environ["PATH"] = env_path
+
+    assert "-ww" in recorder.read_text(encoding="utf-8")
+
+
 def read_worker_pid(job_dir: Path) -> int | None:
     path = job_dir / "worker.pid"
     if not path.is_file():

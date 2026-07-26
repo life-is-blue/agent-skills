@@ -516,8 +516,9 @@ def proc_argv(pid: int) -> list[str] | None:
 
 
 def ps_command_line(pid: int) -> str | None:
+    # -ww disables the BSD/macOS width truncation that would hide the job path.
     listing = subprocess.run(
-        ["ps", "-o", "args=", "-p", str(pid)], capture_output=True, text=True, check=False
+        ["ps", "-ww", "-o", "args=", "-p", str(pid)], capture_output=True, text=True, check=False
     )
     return listing.stdout if listing.returncode == 0 else None
 

@@ -9,7 +9,7 @@ its scripts and references remain available.
 | Skill | Type | Purpose |
 |---|---|---|
 | `coding-agent` | adapter | Run Codex, Claude Code, TClaude, CodeBuddy Code, or OpenCode as monitored background workers |
-| `codex-delegate` | adapter | Call the Codex CLI as a job that returns a machine-readable result envelope |
+| `codex-delegate` | adapter | Call the Codex CLI as a job that returns a machine-readable result envelope; design informed by [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc), implemented as a portable `codex exec --json` adapter |
 | `gemini-frontend` | adapter | Use Gemini CLI for frontend design and implementation |
 | `office-mpp` | bundled | Read, analyze, export, create, and edit Microsoft Project or MSPDI files |
 | `openclaw-coding-agent` | adapter | Run supported coding CLIs through OpenClaw sessions and notifications |

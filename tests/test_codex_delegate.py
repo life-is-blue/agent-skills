@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 import signal
@@ -11,6 +12,13 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "skills" / "codex-delegate" / "scripts" / "codex_run.py"
+
+
+def load_runner_module():
+    spec = importlib.util.spec_from_file_location("codex_run", RUNNER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 FAKE_CODEX = """#!/usr/bin/env bash
 set -u
@@ -341,6 +349,21 @@ def test_cancel_does_not_match_a_job_directory_by_prefix(workspace: dict):
     finally:
         sibling.kill()
         sibling.wait()
+
+
+@pytest.mark.parametrize(
+    "command_line, token, expected",
+    [
+        ("python codex_run.py _worker --job-dir /state/jobs/task-1", "/state/jobs/task-1", True),
+        ("python codex_run.py _worker --job-dir /state/jobs/task-1-1", "/state/jobs/task-1", False),
+        ("codex -o /Users/me/Agent State/jobs/task-1/final.txt -", "/Users/me/Agent State/jobs/task-1/final.txt", True),
+        ("codex -o /Users/me/Agent State/jobs/task-1-1/final.txt -", "/Users/me/Agent State/jobs/task-1/final.txt", False),
+        ("/state/jobs/task-1", "/state/jobs/task-1", True),
+    ],
+)
+def test_ps_fallback_matches_whole_arguments_including_spaces(command_line, token, expected):
+    """The /proc-less fallback must keep spaced paths working without prefix matches."""
+    assert load_runner_module().command_line_has_token(command_line, token) is expected
 
 
 def read_worker_pid(job_dir: Path) -> int | None:

@@ -6,6 +6,10 @@
       "distribution": "adapter"
     },
     {
+      "name": "codex-delegate",
+      "distribution": "adapter"
+    },
+    {
       "name": "gemini-frontend",
       "distribution": "adapter"
     },

@@ -13,6 +13,9 @@ CLIs without depending on OpenClaw.
 - Honor an explicitly requested provider.
 - With `--agent auto`, select the first installed provider in this order:
   Codex, Claude Code, TClaude, CodeBuddy Code, OpenCode.
+- Use the `codex-delegate` Skill instead when the work is Codex-specific and
+  the caller needs a machine-readable result, thread resume, or the built-in
+  reviewer. This runner streams a plain log and does not parse provider output.
 - Handle simple edits and read-only questions directly.
 - Do not silently switch providers after a failure. Report the failure and
   retry or ask.

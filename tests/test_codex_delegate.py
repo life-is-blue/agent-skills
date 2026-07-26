@@ -282,6 +282,46 @@ def test_a_worker_refuses_to_run_an_already_cancelled_job(workspace: dict):
     assert json.loads(run(workspace, "result", launched["job_id"], "--json").stdout)["status"] == "cancelled"
 
 
+def test_cancel_never_signals_an_unrelated_reused_pid(workspace: dict):
+    """A worker that died leaves worker.pid behind; the pid may be recycled."""
+    install_codex(workspace, SLOW_CODEX)
+    launched = json.loads(
+        run(workspace, "start", "--workdir", workspace["repo"], "--prompt", "slow", "--background", "--json").stdout
+    )
+    job_dir = Path(launched["job_dir"])
+    codex_pid = wait_for_codex_child(workspace)
+
+    # Simulate a worker killed before it could record or clean up anything.
+    for pid in (read_worker_pid(job_dir), codex_pid):
+        if pid:
+            os.kill(pid, signal.SIGKILL)
+    job_file = job_dir / "job.json"
+    job = json.loads(job_file.read_text(encoding="utf-8"))
+    job.update({"status": "queued", "pid": None, "child_pid": None})
+    job_file.write_text(json.dumps(job), encoding="utf-8")
+
+    decoy = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    try:
+        (job_dir / "worker.pid").write_text(f"{decoy.pid}\n", encoding="utf-8")
+        cancelled = json.loads(run(workspace, "cancel", launched["job_id"], "--json").stdout)
+
+        assert cancelled["status"] == "cancelled"
+        assert decoy.poll() is None, "cancel signalled an unrelated process"
+    finally:
+        decoy.kill()
+        decoy.wait()
+
+
+def read_worker_pid(job_dir: Path) -> int | None:
+    path = job_dir / "worker.pid"
+    if not path.is_file():
+        return None
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except ValueError:
+        return None
+
+
 def test_interrupting_a_foreground_run_terminates_codex(workspace: dict):
     install_codex(workspace, SLOW_CODEX)
 

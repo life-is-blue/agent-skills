@@ -95,7 +95,7 @@ Each job owns `<state-dir>/jobs/<job-id>/`:
 | `final.txt` | the final assistant message from `-o` |
 | `stderr.log` | Codex stderr |
 | `worker.log` | background worker output, only for `--background` |
-| `worker.pid` | background worker pid, so `cancel` can reach a worker that has not launched Codex yet |
+| `worker.pid` | background worker pid, removed when the worker exits, so `cancel` can reach a worker that has not launched Codex yet |
 
 Nothing is pruned automatically. Delete old job directories when the state
 directory grows.

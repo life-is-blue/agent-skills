@@ -312,6 +312,37 @@ def test_cancel_never_signals_an_unrelated_reused_pid(workspace: dict):
         decoy.wait()
 
 
+def test_cancel_does_not_match_a_job_directory_by_prefix(workspace: dict):
+    """Colliding job ids differ only by a suffix, so argv must match exactly."""
+    install_codex(workspace, SLOW_CODEX)
+    launched = json.loads(
+        run(workspace, "start", "--workdir", workspace["repo"], "--prompt", "slow", "--background", "--json").stdout
+    )
+    job_dir = Path(launched["job_dir"])
+    codex_pid = wait_for_codex_child(workspace)
+    for pid in (read_worker_pid(job_dir), codex_pid):
+        if pid:
+            os.kill(pid, signal.SIGKILL)
+    job_file = job_dir / "job.json"
+    job = json.loads(job_file.read_text(encoding="utf-8"))
+    job.update({"status": "queued", "pid": None, "child_pid": None})
+    job_file.write_text(json.dumps(job), encoding="utf-8")
+
+    # A worker for the sibling job "<id>-1", whose path merely starts with this one.
+    sibling = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)", "--job-dir", f"{job_dir}-1"],
+        start_new_session=True,
+    )
+    try:
+        (job_dir / "worker.pid").write_text(f"{sibling.pid}\n", encoding="utf-8")
+        run(workspace, "cancel", launched["job_id"], "--json")
+
+        assert sibling.poll() is None, "cancel matched a sibling job directory by prefix"
+    finally:
+        sibling.kill()
+        sibling.wait()
+
+
 def read_worker_pid(job_dir: Path) -> int | None:
     path = job_dir / "worker.pid"
     if not path.is_file():

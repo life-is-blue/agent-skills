@@ -504,24 +504,32 @@ def read_worker_pid(job_dir: Path) -> int | None:
         return None
 
 
-def process_command_line(pid: int) -> str | None:
-    proc_file = Path(f"/proc/{pid}/cmdline")
+def process_argv(pid: int) -> list[str] | None:
     try:
-        return proc_file.read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
     except OSError:
-        pass
+        raw = b""
+    if raw:
+        return [token for token in raw.decode("utf-8", "replace").split("\0") if token]
     listing = subprocess.run(
         ["ps", "-o", "args=", "-p", str(pid)], capture_output=True, text=True, check=False
     )
-    return listing.stdout if listing.returncode == 0 else None
+    return listing.stdout.split() if listing.returncode == 0 else None
 
 
 def pid_belongs_to_job(pid: int | None, job_dir: Path) -> bool:
-    """Guard against PID reuse: both the worker and Codex carry the job dir in argv."""
+    """Guard against PID reuse: the worker takes --job-dir and Codex takes -o <job>/final.txt.
+
+    Tokens are compared exactly because job ids can share a prefix (`<id>` and
+    `<id>-1`), so a substring test could match a different job's process.
+    """
     if not pid or not process_alive(pid):
         return False
-    cmdline = process_command_line(int(pid))
-    return bool(cmdline) and str(job_dir) in cmdline
+    argv = process_argv(int(pid))
+    if not argv:
+        return False
+    markers = {str(job_dir), str(job_dir / "final.txt")}
+    return any(token in markers for token in argv)
 
 
 # --------------------------------------------------------------------------

@@ -325,8 +325,64 @@ def resolve_resume_thread(state_dir: Path, workdir: Path) -> str:
 # --------------------------------------------------------------------------
 
 
+class Interrupted(Exception):
+    """SIGINT or SIGTERM reached the worker while Codex was running."""
+
+
+def raise_interrupted(_signum: int, _frame: object) -> None:
+    raise Interrupted()
+
+
+def install_interrupt_handlers() -> dict[int, object]:
+    previous: dict[int, object] = {}
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            previous[sig] = signal.signal(sig, raise_interrupted)
+        except ValueError:
+            pass
+    return previous
+
+
+def restore_interrupt_handlers(previous: dict[int, object]) -> None:
+    for sig, handler in previous.items():
+        try:
+            signal.signal(sig, handler)
+        except (ValueError, TypeError):
+            pass
+
+
+def finalize_job(
+    job: dict,
+    job_dir: Path,
+    status: str,
+    exit_code: int,
+    returncode: int | None,
+    started: float | None,
+) -> dict:
+    if status != "cancelled" and read_job(job_dir).get("status") == "cancelled":
+        status, exit_code = "cancelled", EXIT_CANCELLED
+    job.update(
+        {
+            "status": status,
+            "exit_code": exit_code,
+            "codex_exit_code": returncode,
+            "finished_at": now_iso(),
+            "duration_ms": int((time.monotonic() - started) * 1000) if started is not None else None,
+            "pid": None,
+            "child_pid": None,
+            "phase": "done" if status == "completed" else status,
+        }
+    )
+    write_json(job_dir / "job.json", job)
+    return refresh_envelope(job, job_dir)
+
+
 def execute_job(job_dir: Path) -> dict:
     job = read_job(job_dir)
+    if job.get("status") in TERMINAL_STATUSES:
+        # A cancel can land between the background launch and this first read.
+        return refresh_envelope(job, job_dir)
+
     argv = build_codex_argv(job)
     prompt_file = job_dir / "prompt.txt"
     events_file = job_dir / "events.jsonl"
@@ -336,65 +392,69 @@ def execute_job(job_dir: Path) -> dict:
     write_json(job_dir / "job.json", job)
 
     started = time.monotonic()
-    with events_file.open("wb") as events, stderr_file.open("wb") as errors:
-        stdin_source = subprocess.PIPE if job.get("has_prompt") else subprocess.DEVNULL
-        try:
-            proc = subprocess.Popen(
-                argv,
-                cwd=job["workdir"],
-                stdin=stdin_source,
-                stdout=events,
-                stderr=errors,
-                start_new_session=True,
-            )
-        except OSError as exc:
-            job.update(
-                {
-                    "status": "failed",
-                    "exit_code": EXIT_FAILED,
-                    "finished_at": now_iso(),
-                    "pid": None,
-                    "errors": [{"message": f"cannot launch codex: {exc}"}],
-                }
-            )
+    proc: subprocess.Popen | None = None
+    # Handlers go up before the launch so a signal can never orphan Codex.
+    previous_handlers = install_interrupt_handlers()
+    try:
+        with events_file.open("wb") as events, stderr_file.open("wb") as errors:
+            stdin_source = subprocess.PIPE if job.get("has_prompt") else subprocess.DEVNULL
+            try:
+                proc = subprocess.Popen(
+                    argv,
+                    cwd=job["workdir"],
+                    stdin=stdin_source,
+                    stdout=events,
+                    stderr=errors,
+                    start_new_session=True,
+                )
+            except OSError as exc:
+                job.setdefault("errors", []).append({"message": f"cannot launch codex: {exc}"})
+                return finalize_job(job, job_dir, "failed", EXIT_FAILED, None, started)
+
+            job["child_pid"] = proc.pid
             write_json(job_dir / "job.json", job)
-            return refresh_envelope(job, job_dir)
 
-        job["child_pid"] = proc.pid
-        write_json(job_dir / "job.json", job)
+            if read_job(job_dir).get("status") == "cancelled":
+                terminate_process_group(proc.pid)
+                proc.wait()
+                return finalize_job(job, job_dir, "cancelled", EXIT_CANCELLED, proc.returncode, started)
 
-        if job.get("has_prompt") and proc.stdin is not None:
-            proc.stdin.write(prompt_file.read_bytes())
-            proc.stdin.close()
+            prompt_delivered = True
+            if job.get("has_prompt") and proc.stdin is not None:
+                try:
+                    proc.stdin.write(prompt_file.read_bytes())
+                    proc.stdin.close()
+                except OSError as exc:
+                    prompt_delivered = False
+                    job.setdefault("errors", []).append(
+                        {"message": f"codex closed stdin before the prompt was delivered: {exc}"}
+                    )
 
-        timeout = job.get("timeout_seconds")
-        try:
-            returncode = proc.wait(timeout=timeout if timeout else None)
-            status = "completed" if returncode == 0 else "failed"
-            exit_code = EXIT_OK if returncode == 0 else EXIT_FAILED
-        except subprocess.TimeoutExpired:
+            timeout = job.get("timeout_seconds")
+            try:
+                returncode = proc.wait(timeout=timeout if timeout else None)
+                status = "completed" if returncode == 0 else "failed"
+                exit_code = EXIT_OK if returncode == 0 else EXIT_FAILED
+            except subprocess.TimeoutExpired:
+                terminate_process_group(proc.pid)
+                proc.wait()
+                returncode = proc.returncode
+                status, exit_code = "timeout", EXIT_TIMEOUT
+    except (Interrupted, KeyboardInterrupt):
+        if proc is not None:
             terminate_process_group(proc.pid)
             proc.wait()
-            returncode = proc.returncode
-            status, exit_code = "timeout", EXIT_TIMEOUT
+        job.setdefault("errors", []).append({"message": "interrupted by signal"})
+        return finalize_job(
+            job, job_dir, "cancelled", EXIT_CANCELLED, proc.returncode if proc else None, started
+        )
+    finally:
+        restore_interrupt_handlers(previous_handlers)
 
-    if read_job(job_dir).get("status") == "cancelled":
-        status, exit_code = "cancelled", EXIT_CANCELLED
+    if status == "completed" and not prompt_delivered:
+        status, exit_code = "failed", EXIT_FAILED
 
-    job.update(
-        {
-            "status": status,
-            "exit_code": exit_code,
-            "codex_exit_code": returncode,
-            "finished_at": now_iso(),
-            "duration_ms": int((time.monotonic() - started) * 1000),
-            "pid": None,
-            "child_pid": None,
-            "phase": "done" if status == "completed" else status,
-        }
-    )
-    write_json(job_dir / "job.json", job)
-    return refresh_envelope(job, job_dir)
+    return finalize_job(job, job_dir, status, exit_code, returncode, started)
 
 
 def signal_process_group(pid: int, sig: int) -> None:
@@ -428,7 +488,20 @@ def spawn_background_worker(job_dir: Path) -> int:
             stderr=worker_log,
             start_new_session=True,
         )
+    # Recorded outside job.json so it cannot race the worker's own status writes,
+    # yet still lets cancel reach a worker that has not launched Codex yet.
+    (job_dir / "worker.pid").write_text(f"{proc.pid}\n", encoding="utf-8")
     return proc.pid
+
+
+def read_worker_pid(job_dir: Path) -> int | None:
+    path = job_dir / "worker.pid"
+    if not path.is_file():
+        return None
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except ValueError:
+        return None
 
 
 # --------------------------------------------------------------------------
@@ -720,11 +793,17 @@ def cmd_cancel(args: argparse.Namespace) -> int:
         emit(refresh_envelope(job, job_dir), args.json)
         return EXIT_OK
 
-    # Kill the Codex process group and let the worker finalize; only kill the
-    # worker directly when Codex was never launched.
-    target = job.get("child_pid") or job.get("pid")
+    # Mark the job first so a worker that is still starting refuses to launch Codex.
+    write_json(
+        job_dir / "job.json",
+        {**job, "status": "cancelled", "phase": "cancelled", "exit_code": EXIT_CANCELLED},
+    )
+
+    # Prefer the Codex process group; the worker traps the signal and finalizes.
+    target = job.get("child_pid") or read_worker_pid(job_dir) or job.get("pid")
     if target:
         terminate_process_group(int(target))
+    job = read_job(job_dir)
     job.update(
         {
             "status": "cancelled",

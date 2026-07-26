@@ -504,6 +504,26 @@ def read_worker_pid(job_dir: Path) -> int | None:
         return None
 
 
+def process_command_line(pid: int) -> str | None:
+    proc_file = Path(f"/proc/{pid}/cmdline")
+    try:
+        return proc_file.read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+    except OSError:
+        pass
+    listing = subprocess.run(
+        ["ps", "-o", "args=", "-p", str(pid)], capture_output=True, text=True, check=False
+    )
+    return listing.stdout if listing.returncode == 0 else None
+
+
+def pid_belongs_to_job(pid: int | None, job_dir: Path) -> bool:
+    """Guard against PID reuse: both the worker and Codex carry the job dir in argv."""
+    if not pid or not process_alive(pid):
+        return False
+    cmdline = process_command_line(int(pid))
+    return bool(cmdline) and str(job_dir) in cmdline
+
+
 # --------------------------------------------------------------------------
 # Job creation
 # --------------------------------------------------------------------------
@@ -800,9 +820,10 @@ def cmd_cancel(args: argparse.Namespace) -> int:
     )
 
     # Prefer the Codex process group; the worker traps the signal and finalizes.
-    target = job.get("child_pid") or read_worker_pid(job_dir) or job.get("pid")
-    if target:
-        terminate_process_group(int(target))
+    for candidate in (job.get("child_pid"), read_worker_pid(job_dir), job.get("pid")):
+        if pid_belongs_to_job(candidate, job_dir):
+            terminate_process_group(int(candidate))
+            break
     job = read_job(job_dir)
     job.update(
         {
@@ -859,7 +880,11 @@ def emit_doctor(report: dict, as_json: bool) -> None:
 
 
 def cmd_worker(args: argparse.Namespace) -> int:
-    envelope = execute_job(Path(args.job_dir))
+    job_dir = Path(args.job_dir)
+    try:
+        envelope = execute_job(job_dir)
+    finally:
+        (job_dir / "worker.pid").unlink(missing_ok=True)
     return exit_code_for(envelope)
 
 

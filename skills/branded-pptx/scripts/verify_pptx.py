@@ -173,14 +173,22 @@ def check_file(path: str | Path) -> list[dict]:
             elif shape.has_text_frame and shape.text_frame.text.strip():
                 text_width, text_height = _text_extent(shape)
                 if not _wraps(shape.text_frame):
-                    right_pt = left_pt + text_width + 2 * DEFAULT_INSET_PT
-                    if right_pt > slide_width_pt + EDGE_TOLERANCE_PT:
+                    # A wrap="none" box is grown by the renderer around its own
+                    # centre, so overlong text spills off *both* sides — that is
+                    # how a cover title ends up clipped at the left edge.
+                    centre = left_pt + Emu(shape.width).pt / 2
+                    grown = text_width + 2 * DEFAULT_INSET_PT
+                    left_edge = min(left_pt, centre - grown / 2)
+                    right_edge = max(left_pt + grown, centre + grown / 2)
+                    if left_edge < -EDGE_TOLERANCE_PT or right_edge > slide_width_pt + EDGE_TOLERANCE_PT:
                         findings.append(
                             _finding(
                                 "error",
                                 index,
-                                f"non-wrapping text {name!r} extends to {right_pt:.0f}pt, past the "
-                                f"{slide_width_pt:.0f}pt slide edge",
+                                f"non-wrapping text {name!r} grows to "
+                                f"{left_edge:.0f}..{right_edge:.0f}pt on a "
+                                f"0..{slide_width_pt:.0f}pt slide — it will be clipped; "
+                                "give the box explicit width and wrap='square'",
                             )
                         )
                 elif _autofit_mode(shape.text_frame) == "shape":

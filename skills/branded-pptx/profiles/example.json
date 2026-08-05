@@ -1,0 +1,13 @@
+{
+  "template": "../templates/template.pptx",
+  "cover_slide_index": 0,
+  "cover_title_shape": "<cover title text box name>",
+  "cover_date_shape": "<cover date text box name, or empty>",
+  "cover_safe_right_in": 10.29,
+  "cover_safe_margin_in": 0.3,
+  "content_layout": "<content layout name>",
+  "title_placeholder_idx": 15,
+  "content_margin_x_in": 0.5,
+  "content_gap_below_title_in": 0.3,
+  "content_bottom_in": 6.9
+}

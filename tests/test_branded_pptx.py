@@ -186,6 +186,23 @@ def test_detected_profile_round_trips(tmp_path):
     assert detected["title_placeholder_idx"] == PROFILE.title_placeholder_idx
 
 
+def test_detected_profile_is_immediately_loadable(tmp_path):
+    """The documented first-use flow writes the profile into profiles/ while the
+    template sits in templates/, so the emitted path has to resolve from there."""
+    import json
+
+    import inspect_template
+
+    detected = inspect_template.detect_profile(presentation(), PROFILE.template)
+    written = deckprofile.PROFILE_DIR / "roundtrip.test.json"
+    written.write_text(json.dumps(detected, ensure_ascii=False), encoding="utf-8")
+    try:
+        loaded = deckprofile.load(written)
+        assert loaded.template == PROFILE.template.resolve()
+    finally:
+        written.unlink()
+
+
 # --- spec validation --------------------------------------------------------
 
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -113,6 +114,23 @@ def collect_slides(prs: Presentation) -> list[dict]:
             )
         slides.append({"index": index, "layout": slide.slide_layout.name, "shapes": shapes})
     return slides
+
+
+def _template_ref(template_path: Path) -> str:
+    """How the profile should refer to this template.
+
+    Profiles resolve `template` relative to themselves, and the documented
+    layout puts profiles in profiles/ and templates in templates/ — so a bare
+    filename would not resolve. Emit a path relative to the profile directory
+    for templates inside the Skill, and an absolute path for anything else.
+    """
+    template_path = template_path.resolve()
+    profile_dir = (SKILL_DIR / "profiles").resolve()
+    try:
+        template_path.relative_to(SKILL_DIR.resolve())
+    except ValueError:
+        return str(template_path)
+    return os.path.relpath(template_path, profile_dir)
 
 
 def detect_profile(prs: Presentation, template_path: Path) -> dict:
@@ -214,7 +232,7 @@ def detect_profile(prs: Presentation, template_path: Path) -> dict:
             bottom_in = round(min(inches(shape.top) for shape in numbers) - 0.25, 2)
 
     return {
-        "template": template_path.name,
+        "template": _template_ref(template_path),
         "cover_slide_index": cover_index,
         "cover_title_shape": title.name,
         "cover_date_shape": date.name if date is not None else "",

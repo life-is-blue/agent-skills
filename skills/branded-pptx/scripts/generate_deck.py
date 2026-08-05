@@ -34,7 +34,7 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.enum.dml import MSO_THEME_COLOR
 from pptx.enum.shapes import PP_PLACEHOLDER
-from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE
 from pptx.enum.text import PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Emu, Inches, Pt
@@ -284,11 +284,30 @@ def fit_cover_size(lines: list[str], budget_pt: float) -> tuple[int, bool]:
     return COVER_SIZES[-1], True
 
 
+def _line_spacing(pPr) -> float:
+    if pPr is None:
+        return 1.0
+    spc_pct = pPr.find(qn("a:lnSpc"))
+    if spc_pct is None:
+        return 1.0
+    pct = spc_pct.find(qn("a:spcPct"))
+    if pct is None or pct.get("val") is None:
+        return 1.0
+    return int(pct.get("val")) / 100000.0
+
+
 def set_cover_title(shape, title_text: str) -> dict:
     """Rewrite the cover title with one font size and one paragraph style per line.
 
-    The template run carries `+mj-ea` and a theme colour; both are preserved by
+    The template run carries the theme font and colour; both are preserved by
     cloning the original run properties and overriding only the size.
+
+    The box is always given explicit geometry. Template cover titles are often
+    `wrap="none"` with autofit, and a renderer then grows the box around its
+    *centre* — so text longer than the original placeholder spills off the left
+    edge of the slide. Pinning width, height and position removes the guess:
+    text lays out from the template's left edge, wraps inside the safe width,
+    and stays centred on the vertical position the designer chose.
     """
     text_frame = shape.text_frame
     body = text_frame._txBody
@@ -306,18 +325,27 @@ def set_cover_title(shape, title_text: str) -> dict:
         raise SpecError("cover title is empty")
 
     budget_pt = cover_title_budget(shape)
+    if budget_pt <= 0:
+        raise SpecError(
+            "profile cover_safe_right_in leaves no room right of the title box; "
+            "re-derive the profile"
+        )
     size_pt, needs_wrap = fit_cover_size(lines, budget_pt)
 
-    if needs_wrap:
-        # Longest line still does not fit at the minimum size: switch the box
-        # from grow-sideways to wrap-inside-a-fixed-width so nothing runs off.
-        body_pr = body.find(qn("a:bodyPr"))
-        body_pr.set("wrap", "square")
-        shape.width = PROFILE.cover_safe_right - PROFILE.cover_safe_margin - shape.left
-        wrapped: list[str] = []
-        for line in lines:
-            wrapped.extend(tm.wrap_lines(line, size_pt, budget_pt))
-        lines = wrapped
+    centre_y = shape.top + shape.height // 2
+    body_pr = body.find(qn("a:bodyPr"))
+    body_pr.set("wrap", "square")
+    for autofit in ("a:spAutoFit", "a:normAutofit"):
+        node = body_pr.find(qn(autofit))
+        if node is not None:
+            body_pr.remove(node)
+    shape.width = PROFILE.cover_safe_right - PROFILE.cover_safe_margin - shape.left
+
+    spacing = _line_spacing(proto_pPr)
+    specs = [{"text": line, "size_pt": size_pt, "line_spacing": spacing} for line in lines]
+    height = int(Pt(tm.block_height_pt(specs, budget_pt) + size_pt * 0.4))
+    shape.height = height
+    shape.top = max(0, centre_y - height // 2)
 
     for paragraph in paragraphs:
         body.remove(paragraph)
@@ -424,6 +452,9 @@ def render_bullets(slide, items: list[dict], area=None, sizes=None) -> None:
     text_frame = box.text_frame
     text_frame.word_wrap = True
     text_frame.auto_size = MSO_AUTO_SIZE.NONE
+    # The box spans the whole body area; centring keeps short content in the
+    # optical centre instead of clinging to the title with dead space below.
+    text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
 
     for index, item in enumerate(items):
         paragraph = text_frame.paragraphs[0] if index == 0 else text_frame.add_paragraph()
@@ -436,10 +467,14 @@ def render_bullets(slide, items: list[dict], area=None, sizes=None) -> None:
         paragraph.space_after = Pt(4)
 
 
-def render_table(slide, table_data: dict, area=None) -> None:
+def render_table(slide, table_data: dict, area=None, centre=True) -> None:
     left, top, width, height = area or content_area(slide)
     headers = table_data["headers"]
     rows = table_data["rows"]
+
+    if centre:
+        table_height = int(TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * len(rows))
+        top += max(0, (height - table_height) // 2)
 
     shape = slide.shapes.add_table(len(rows) + 1, len(headers), left, top, width, TABLE_HEADER_HEIGHT)
     table = shape.table
@@ -496,6 +531,7 @@ def render_columns(slide, items: list, column_count: int) -> None:
         text_frame = box.text_frame
         text_frame.word_wrap = True
         text_frame.auto_size = MSO_AUTO_SIZE.NONE
+        text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
 
         entries = [normalize_item(entry) for entry in column.get("items", [])]
         specs = []
@@ -534,9 +570,21 @@ def render_mixed(slide, items: list[dict], table_data: dict) -> None:
     left, top, width, height = content_area(slide)
     specs = bullet_paragraph_specs(items, MIXED_BULLET_SIZES[0])
     bullet_height = int(min(height * 0.4, Pt(tm.block_height_pt(specs, Emu(width).pt)) + Pt(12)))
+    gap = int(Inches(0.25))
+    table_height = int(TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * len(table_data["rows"]))
+
+    # Centre the pair as one block, so a short page is balanced rather than
+    # top-heavy, and a full one still starts at the top of the body area.
+    block = bullet_height + gap + table_height
+    top += max(0, (height - block) // 2)
+
     render_bullets(slide, items, area=(left, top, width, bullet_height), sizes=MIXED_BULLET_SIZES)
-    table_top = top + bullet_height + Inches(0.2)
-    render_table(slide, table_data, area=(left, table_top, width, top + height - table_top))
+    render_table(
+        slide,
+        table_data,
+        area=(left, top + bullet_height + gap, width, table_height),
+        centre=False,
+    )
 
 
 def render_layout_page(slide, page: dict) -> list[str]:

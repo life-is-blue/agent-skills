@@ -269,17 +269,61 @@ def test_cover_lines_share_one_size_and_one_paragraph_style(tmp_path):
     assert len(spacings) == 1
 
 
-def test_long_cover_title_wraps_instead_of_running_off_the_slide(tmp_path):
-    title = "某某某平台在某某行业的规模化落地实践与下一阶段路线图说明"
-    output, report = build(tmp_path, {"title": title, "outline": [COVER]})
+NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "短标题",
+        "数据平台一体化改造\n2026 上半年进展汇报",
+        "某某某平台在某某行业的规模化落地实践与下一阶段路线图说明",
+    ],
+)
+def test_cover_title_box_never_relies_on_autofit(tmp_path, title):
+    """A wrap="none" autofit box is grown by the renderer around its centre, so
+    a title longer than the template's placeholder is clipped at the left edge.
+    The box must therefore carry explicit geometry, at every title length."""
+    from pptx import Presentation
+
+    output, _ = build(tmp_path, {"title": title, "outline": [COVER]})
     shape = _cover_title_shape(output)
-    body_pr = shape.text_frame._txBody.find(
-        "{http://schemas.openxmlformats.org/drawingml/2006/main}bodyPr"
-    )
+    body_pr = shape.text_frame._txBody.find(NS_A + "bodyPr")
+
     assert body_pr.get("wrap") == "square"
-    assert len(shape.text_frame.paragraphs) > 1
-    assert any("wrap mode" in note for note in report["notes"])
+    assert body_pr.find(NS_A + "spAutoFit") is None
+    assert body_pr.find(NS_A + "normAutofit") is None
+
+    deck = Presentation(str(output))
+    assert shape.left >= 0
+    assert shape.left + shape.width <= deck.slide_width
+    assert shape.top >= 0
+    assert shape.top + shape.height <= deck.slide_height
     assert not [f for f in verify.check_file(output) if f["level"] == "error"]
+
+
+def test_long_cover_title_is_reported_as_wrapping(tmp_path):
+    title = "某某某平台在某某行业的规模化落地实践与下一阶段路线图说明"
+    _, report = build(tmp_path, {"title": title, "outline": [COVER]})
+    assert any("wrap mode" in note for note in report["notes"])
+
+
+def test_verifier_catches_a_centre_grown_text_box(tmp_path):
+    """Regression for the clipped cover title: geometry alone looked fine."""
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    output, _ = build(tmp_path, {"title": "T", "outline": [COVER]})
+    deck = Presentation(str(output))
+    box = deck.slides[0].shapes.add_textbox(Inches(0.9), Inches(3), Inches(2), Inches(0.9))
+    box.text_frame.word_wrap = False
+    box.text_frame.paragraphs[0].add_run().text = "很长的标题" * 8
+    broken = tmp_path / "broken.pptx"
+    deck.save(str(broken))
+
+    assert any(
+        "clipped" in f["message"] for f in verify.check_file(broken) if f["level"] == "error"
+    )
 
 
 def test_date_field_is_replaced_with_static_text(tmp_path):

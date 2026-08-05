@@ -1,0 +1,8 @@
+# Templates are corporate assets and stay out of the repository. Copy yours into
+# templates/ and point a profile at it.
+templates/*.pptx
+templates/*.potx
+
+# Local profiles describe a specific template; only the example is tracked.
+profiles/*.json
+!profiles/example.json

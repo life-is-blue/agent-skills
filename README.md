@@ -8,6 +8,7 @@ its scripts and references remain available.
 
 | Skill | Type | Purpose |
 |---|---|---|
+| `branded-pptx` | bundled | Build decks from an outline on your own .pptx template, with layout verification |
 | `coding-agent` | adapter | Run Codex, Claude Code, TClaude, CodeBuddy Code, or OpenCode as monitored background workers |
 | `codex-delegate` | adapter | Call the Codex CLI as a job that returns a machine-readable result envelope; design informed by [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc), implemented as a portable `codex exec --json` adapter |
 | `gemini-frontend` | adapter | Use Gemini CLI for frontend design and implementation |

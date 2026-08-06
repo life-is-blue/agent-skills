@@ -651,22 +651,49 @@ def render_layout_page(slide, page: dict) -> list[str]:
             "were supplied; the empty slots were removed"
         )
 
+    fit = page.get("image_fit", "contain")
+    if fit not in ("contain", "cover"):
+        raise SpecError(f"image_fit must be 'contain' or 'cover'; got {fit!r}")
+
     for shape, image in zip(pictures + charts, images):
         path = Path(image)
         if not path.exists():
             raise SpecError(f"image not found: {image}")
+        box = (shape.left, shape.top, shape.width, shape.height)
         if shape.placeholder_format.type == PP_PLACEHOLDER.PICTURE:
-            shape.insert_picture(str(path))
+            picture = shape.insert_picture(str(path))
         else:
-            box = (shape.left, shape.top, shape.width, shape.height)
             shape._element.getparent().remove(shape._element)
-            slide.shapes.add_picture(str(path), *box)
+            picture = slide.shapes.add_picture(str(path), *box)
+        if fit == "contain":
+            _fit_inside(picture, box)
 
     # Unused placeholders would render as "click to add" prompts: drop them.
     for shape in bodies[len(entries) :] + (pictures + charts)[len(images) :]:
         if shape._element.getparent() is not None:
             shape._element.getparent().remove(shape._element)
     return notes
+
+
+def _fit_inside(picture, box) -> None:
+    """Scale a picture to fit its slot whole, centred, instead of cropping it.
+
+    A picture placeholder crops to fill, which silently cuts the axes off a
+    chart or the edges off a diagram. Charts and screenshots are the common case
+    in a corporate deck, so losing content is the wrong default; pass
+    `"image_fit": "cover"` on the page when a photo should fill the frame.
+    """
+    left, top, width, height = box
+    picture.crop_left = picture.crop_right = 0
+    picture.crop_top = picture.crop_bottom = 0
+    native_width, native_height = picture.image.size
+    if not native_width or not native_height:
+        return
+    scale = min(width / native_width, height / native_height)
+    fitted_width, fitted_height = int(native_width * scale), int(native_height * scale)
+    picture.left = left + (width - fitted_width) // 2
+    picture.top = top + (height - fitted_height) // 2
+    picture.width, picture.height = fitted_width, fitted_height
 
 
 def _fill_placeholder(shape, entry: dict) -> None:

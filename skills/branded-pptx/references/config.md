@@ -27,6 +27,7 @@ single slide is written; anything the renderer cannot honour raises
 | `layout` | string | layout | template layout name, see [layouts.md](layouts.md) |
 | `slots` | object | layout | `{"<placeholder idx>": "text"}`, overrides reading order |
 | `images` | array | layout | image paths, filled into picture slots in reading order |
+| `image_fit` | string | layout | `contain` (default, whole image, centred) or `cover` (fill the slot, cropping edges) |
 
 ## content_type by example
 

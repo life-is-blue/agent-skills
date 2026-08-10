@@ -9,10 +9,7 @@ description: Use when users need source-grounded answers from git-library for AP
 Route → retrieve → read source → answer. Minimal calls.
 
 ## Config
-- Confidence thresholds: high (raw_score ≤ -5), medium (-5 < raw ≤ -2), low (raw > -2)
-- Ambiguity: max_gap = 0.20, min_overlap = 0.45
-- Budget: default 5 calls, hard cap 8, max 1 cross-library fallback
-- Query variants: max 2
+The producer-owned machine contract is [references/capability-contract.json](references/capability-contract.json); its pinned source, commit, hash, and license are in [references/capability-provenance.json](references/capability-provenance.json). Do not copy numeric policy into this file or infer it from prose. Read the contract when thresholds, budgets, or tool compatibility affect the task.
 
 ## Search Response Schema
 Each search result contains:
@@ -50,7 +47,7 @@ No clear library? Run cross-library probe:
 ```bash
 search-docs search "QUERY" --limit 8
 ```
-If results span multiple libraries with close scores (gap ≤ 0.20):
+If results span multiple libraries with close scores under the contract's ambiguity gate:
 - Interactive: ask user to clarify.
 - Non-interactive: return best + second candidate, mark uncertainty.
 
@@ -79,6 +76,8 @@ Deliver: library positioning, topic distribution, recommended starting docs.
 ## Commands
 ```bash
 search-docs health                                    # connectivity check
+search-docs version                                   # bundled contract version
+search-docs doctor --offline                          # local integrity check
 search-docs libraries                                 # list all libraries
 search-docs libraries --fresh-for-query "QUERY"       # freshness-aware list
 search-docs search "Q" --library LIB --limit 8        # targeted search
@@ -93,3 +92,4 @@ search-docs recent --days 7                           # recent updates
 - Answering from snippets without reading source doc.
 - Repeating fallback loops beyond one round.
 - Treating static routing hints as stronger than live library metadata.
+- Continuing after `doctor` reports contract or installation drift.

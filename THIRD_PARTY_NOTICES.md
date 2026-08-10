@@ -11,3 +11,10 @@ text is preserved at
 The adapted `openclaw-coding-agent` and portable `coding-agent` implementations
 are maintained by this repository and are not presented as upstream OpenClaw
 files.
+
+## git-library capability contract
+
+`skills/search-docs/references/capability-contract.json` is an unmodified
+snapshot exported from git-library. Its repository, source path, exact commit,
+SHA-256 digest, and upstream MIT license declaration are retained in
+`skills/search-docs/references/capability-provenance.json`.

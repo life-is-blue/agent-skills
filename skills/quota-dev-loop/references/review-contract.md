@@ -9,9 +9,10 @@ implementer's prose or silently fix the work.
   and acceptance commands.
 - Prefer a read-only reviewer or an isolated review worktree. Do not let review
   edits contaminate the candidate being judged.
-- Expect the review brief to cost more context than the task contract did. The
-  reviewer needs expected values and reproduction steps that the implementer was
-  never given.
+- Expect the brief to be shorter than the task contract and the review run to be
+  longer than reading a diff. The brief carries expected values and reproduction
+  steps rather than a restated specification, and the reviewer spends its
+  capacity rerunning and reproducing.
 
 ## Withheld checks
 

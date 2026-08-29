@@ -13,7 +13,10 @@ session context.
 
 ## Measured observations
 
-Counts below are recoverable from the artifacts above.
+Counts below are recoverable from the artifacts above. Character counts are
+measured on the coordinator artifact, which stores its messages in full; the
+implementation artifact elides the middle of long messages and understates any
+length measured from it.
 
 - **Withheld checks did the detection work.** Of 31 verdicts recording both
   scores, the visible acceptance commands were incomplete in 5, while the
@@ -30,14 +33,21 @@ Counts below are recoverable from the artifacts above.
   file that simultaneously claimed zero occurrences.
 - **First-pass acceptance was 41%** — 14 accepted against 20 rejected across 34
   relayed verdicts. Multi-round repair was the normal case, not the exception.
-- **Review is cheaper in time than in context.** Acceptance rounds took between
-  1m50s and 15 minutes of wall clock, mostly 5 to 11 minutes, but the review
-  briefs averaged 5215 characters against 1655 for the task contracts they
-  judged, a ratio of about 3.2 to 1.
-- **Task contracts stayed small.** 36 contracts averaged 1655 characters within a
-  4000-character host limit, ranging from 746 for narrow repairs to 1964 for a
-  full round, dispatched at a median interval of 18 minutes over a 37.5-hour span
-  containing roughly 9.7 hours of active intervals.
+- **Review was cheap to author and expensive to run.** The 31 review briefs
+  measured a median of 1106 characters, about 0.45 times the contract they
+  judged, because a brief points at a judge and its expected values instead of
+  restating a specification. The acceptance rounds themselves took 1m50s to 15
+  minutes of wall clock, mostly 5 to 11 minutes, since the reviewer reran the
+  suite and built its own harness. Review consumes capacity as execution, not as
+  authoring.
+- **Task contracts ran against a hard prompt bound.** 34 full contracts measured
+  a median of 2704 and a maximum of 3859 characters against the 4000-character
+  `/goal` limit declared by the Skill that authored them, so the largest consumed
+  96% of the cap; 3 narrow repair contracts measured 723 to 1434. They were
+  dispatched at a median interval of 18 minutes over a 37.5-hour span containing
+  roughly 9.7 hours of active intervals. A fixed prompt bound against
+  accumulating cross-round invariants is what makes restating them in every
+  contract unaffordable.
 - **The reviewer was not infallible.** At least one rejection was itself wrong,
   overturned by the controller citing a specific file and line in the reference
   implementation, after which the contract was corrected instead of the working

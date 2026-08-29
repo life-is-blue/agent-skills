@@ -57,10 +57,10 @@ not:
   gains the least from a stronger model;
 - prefer a reviewer from a different engine family, so a shared blind spot is
   less likely;
-- budget the reviewer as a first-class consumer of capacity. A review brief
-  carries expected values, reproduction steps, and withheld checks the
-  implementer never received, so it can cost several times the contract it
-  judges; it is not a quick look at a diff.
+- budget the reviewer as an executor rather than an author. Its brief is short
+  because it points at a judge and its expected values, but the review itself
+  reruns the suite and builds its own harness, so it costs far more than reading
+  a diff.
 
 For provider execution, use a host-provided adapter whose local help and smoke
 behavior have been verified. Compatible hosts may use `coding-agent`,

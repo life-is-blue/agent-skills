@@ -2,8 +2,10 @@
 
 ## Stable principles
 
-- Put frequently changing routing knowledge in readable profiles and references;
-  keep provider adapters thin and provider-specific because CLI envelopes,
+- Keep host facts out of the method. Which CLI is installed, cheap, or authorized
+  changes independently of how the work should be run, so it belongs in a
+  one-time host setup rather than in the protocol.
+- Keep provider adapters thin and provider-specific, because CLI envelopes,
   permissions, exit codes, and resume behavior differ materially.
 - Transfer frozen task contracts, not entire coordinator conversations.
 - Separate planning, implementation, and acceptance when the risk justifies the
@@ -35,10 +37,10 @@
   improvement.
 - Independent models can share the same specification error. Engine diversity
   does not replace contract validation or real-environment tests.
-- Balance-based scheduling is design, not a finding. The source corpus optimized
-  for context preservation and cost arbitrage and contains no subscription-quota
-  evidence, so quota stays a constraint here. Cost arbitrage between an expensive
-  coordinator and a cheaper implementer is the part the corpus supports.
+- Balance-based scheduling is design, not a finding, which is why it is absent
+  here. The source corpus optimized for context preservation and cost arbitrage
+  and contains no subscription-quota evidence; cost arbitrage between an
+  expensive coordinator and a cheaper implementer is the part it supports.
 - The recurring failure shapes come from one corpus. Treat the standing withheld
   checks as a starting library to extend from new traces, not a closed set.
 - This protocol does not expose subscription balances, install CLIs, authenticate

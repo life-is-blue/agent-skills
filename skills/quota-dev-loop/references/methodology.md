@@ -8,6 +8,10 @@
 - Keep provider adapters thin and provider-specific, because CLI envelopes,
   permissions, exit codes, and resume behavior differ materially.
 - Transfer frozen task contracts, not entire coordinator conversations.
+- Keep cross-round invariants, the remaining plan, and the contracts themselves in
+  the repository rather than in each prompt. A prompt bound is fixed while
+  invariants accumulate, and a constraint that recurs deserves a mechanical guard
+  rather than stronger wording.
 - Separate planning, implementation, and acceptance when the risk justifies the
   coordination cost.
 - Treat implementation summaries as claims. Tests, diffs, files, and reproduced

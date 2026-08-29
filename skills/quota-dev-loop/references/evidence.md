@@ -48,6 +48,16 @@ length measured from it.
   roughly 9.7 hours of active intervals. A fixed prompt bound against
   accumulating cross-round invariants is what makes restating them in every
   contract unaffordable.
+- **The remaining plan was not durable.** The coordinator was asked twice in one
+  run, roughly 65 messages apart, how many contracts were still needed to reach
+  the objective. The plan existed only in its context, while the per-round
+  receipt written into the repository covered the current task alone.
+- **The read-back existed and was not a gate.** Every contract opened with a
+  task 0 that verified baseline numbers before any edit, and half of them also
+  required a written receipt of the goal as understood, the intended order, and
+  the largest risk. Nothing acted on that receipt, and the round rejected over a
+  contract defect rather than an implementation defect surfaced only after the
+  work was finished and reviewed.
 - **The reviewer was not infallible.** At least one rejection was itself wrong,
   overturned by the controller citing a specific file and line in the reference
   implementation, after which the contract was corrected instead of the working

@@ -32,6 +32,10 @@ option reserved for high risk.
   expected values do not.
 - Re-verify the protections earlier rounds added. A gate is only worth its cost
   while it is still present.
+- In a multi-round run, confirm the worker's read-back against the standing
+  constraint set, per
+  [durable state between rounds](durable-state.md). A fire-and-forget dispatch
+  offers no earlier point at which a misread goal can be caught.
 - A withheld check can itself be wrong. When the implementer disputes one with
   file, line, or command evidence, the controller resolves the specification
   rather than forcing the implementation to match a disproven expectation.

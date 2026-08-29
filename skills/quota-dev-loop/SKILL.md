@@ -73,6 +73,13 @@ For implementation or substantial investigation, write a frozen task contract
 using [the task contract](references/task-contract.md). Give each worker only the
 context needed for its role.
 
+Across a multi-round run, keep the invariants, the remaining plan, and the
+contracts themselves in the repository rather than in each prompt, and open every
+dispatch with a read-back of them. Read
+[durable state between rounds](references/durable-state.md). A contract is
+bounded while the invariants accumulate, so restating them each round costs more
+of that bound and leaves the selection unchecked in the coordinator's context.
+
 Before dispatching, establish what will decide the outcome independently of the
 worker's own report: an external judge where a reference exists, and numeric
 gates that may only move up. Read

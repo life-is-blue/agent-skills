@@ -7,9 +7,11 @@ contract is a context-transfer boundary, not a transcript dump.
 
 - One contract, one dispatch. Do not split a single task across several prompts
   or require the user to assemble files before work can start.
-- Respect the host's prompt or command size limit as a hard bound. A contract
-  that does not fit is evidence that the task is too large: split it and issue
-  one piece at a time.
+- Respect the host's prompt or command size limit as a hard bound when the text
+  is the dispatch. A contract that does not fit is evidence that the task is too
+  large: split it and issue one piece at a time. When the runner can read the
+  repository, write the contract to a path and dispatch the path instead, per
+  [durable state between rounds](durable-state.md).
 - Point at the file that is the specification — test suite, schema, contract
   file, acceptance script, or design document — and give its path. Do not
   paraphrase it. A paraphrase becomes a second specification that will diverge
@@ -41,8 +43,10 @@ Include only fields that change execution:
     issues, revision, and concise result.
 
 For fast mode, outcome, workspace, scope, acceptance, and delivery may be enough.
-For deep mode, add a short progress artifact so a resumed worker does not repeat
-completed work.
+For a multi-round run, open with a read-back of the standing constraints and keep
+a durable ledger, so a resumed worker neither repeats completed work nor proceeds
+on a misread goal; see
+[durable state between rounds](durable-state.md).
 
 Before dispatching, read the contract side of
 [the standing withheld checks](withheld-checks.md). Most rejections come from a

@@ -30,6 +30,10 @@
       "distribution": "protocol-only"
     },
     {
+      "name": "quota-dev-loop",
+      "distribution": "protocol-only"
+    },
+    {
       "name": "search-docs",
       "distribution": "adapter"
     },

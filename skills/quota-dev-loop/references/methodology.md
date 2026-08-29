@@ -16,9 +16,13 @@
 - Withhold the checks that would expose a plausible-but-wrong result. A worker
   optimizes what it can see, so visible gates mostly confirm what the contract
   already demanded.
-- Spend urgent quota on orthogonal work. Independent implementation, review,
-  negative testing, and contract investigation are more valuable than asking
-  several models for interchangeable summaries.
+- Route by relative cost and capability, which are observable, rather than by
+  remaining balance, which is not. Reserve the expensive context for decisions
+  and give high-frequency iteration to the cheapest provider that can carry it.
+- Prefer orthogonal work. Independent implementation, review, negative testing,
+  and contract investigation are worth more than asking several models for
+  interchangeable summaries, and capacity left unused is cheaper than a round
+  spent on work nobody needed.
 - A failed premise should change the task contract. It should not force a worker
   to implement a known-wrong specification.
 
@@ -31,10 +35,12 @@
   improvement.
 - Independent models can share the same specification error. Engine diversity
   does not replace contract validation or real-environment tests.
-- Quota-based routing is design, not a finding. The source corpus optimized for
-  context preservation and cost arbitrage and contains no subscription-quota
-  evidence, so treat the routing rules as the least validated part of this
-  protocol.
+- Balance-based scheduling is design, not a finding. The source corpus optimized
+  for context preservation and cost arbitrage and contains no subscription-quota
+  evidence, so quota stays a constraint here. Cost arbitrage between an expensive
+  coordinator and a cheaper implementer is the part the corpus supports.
+- The recurring failure shapes come from one corpus. Treat the standing withheld
+  checks as a starting library to extend from new traces, not a closed set.
 - This protocol does not expose subscription balances, install CLIs, authenticate
   accounts, create worktrees, or execute providers by itself.
 

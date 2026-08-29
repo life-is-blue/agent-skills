@@ -1,14 +1,14 @@
 ---
 name: quota-dev-loop
-description: Route substantial software development across multiple subscribed coding CLIs so expiring quota produces useful, independently verified work. Use when the user asks to maximize several AI subscriptions, coordinate heterogeneous coding agents, or run a quota-aware plan/implement/review loop; do not use for a simple single-agent edit, unapproved provider spending, or work without a verifiable outcome.
+description: Route substantial software development across multiple subscribed coding CLIs so each call produces independently verified work, separating plan, implementation, and acceptance across providers. Use when the user asks to coordinate heterogeneous coding agents, get more out of several AI subscriptions, or run a plan/implement/review loop with independent acceptance; do not use for a simple single-agent edit, unapproved provider spending, or work without a verifiable outcome.
 ---
 
 # Quota Dev Loop
 
-Treat subscription quota as expiring capacity, not as a target for purposeless
-token consumption. Preserve a quality floor first; among eligible providers,
-prefer work that consumes the most urgent quota and produces a durable artifact,
-decision, or independent proof.
+Optimize for verified work completed, not for tokens consumed. Separate the role
+that decides from the role that executes, put ground truth outside the
+implementer, and treat a subscription as a constraint on the plan and a cost to
+arbitrage rather than a target to fill.
 
 ## Establish the run
 
@@ -16,21 +16,20 @@ Collect or confirm:
 
 - the task, repository, starting revision, scope, and external side effects;
 - the required quality floor and machine-verifiable completion signals;
-- available providers, readiness, write permissions, strengths, remaining quota,
-  and reset time;
+- available providers, readiness, write permissions, strengths, relative cost and
+  speed, and any hard limits;
 - whether the user authorized a multi-provider run for this task.
 
-Do not infer remaining subscription quota from one run's token usage. When a
-provider exposes no safe quota API, use a user-supplied normalized fraction or
-the qualitative state `critical`, `high`, `normal`, `low`, or `unknown`. Keep
-credentials and mutable quota state in the host environment, not this Skill.
+Keep credentials and mutable provider state in the host environment, not this
+Skill. Remaining subscription balance is usually unknowable: no provider offers
+reliable telemetry, and the usage reported by one call describes that call alone.
+Route on cost and capability instead.
 
 ## Choose a mode and route roles
 
 Read [the operating modes](references/modes.md), then select the smallest mode
-that both meets the quality floor and creates useful work for urgent quota.
-Read [the quota routing protocol](references/quota-routing.md) before assigning
-providers.
+that meets the quality floor. Read [the routing protocol](references/routing.md)
+before assigning providers.
 
 Keep roles abstract: coordinator, implementer, and reviewer. Assign providers
 from current evidence rather than permanently binding a vendor to a role. When
@@ -51,10 +50,14 @@ context needed for its role.
 Before dispatching, establish what will decide the outcome independently of the
 worker's own report: an external judge where a reference exists, and numeric
 gates that may only move up. Read
-[ground truth and gates](references/ground-truth.md). Keep the checks that would
-reveal a plausible-but-wrong result in the reviewer contract, never in the
-implementer's prompt; a worker satisfies what it can see, so visible checks
-alone mostly confirm what the contract already demanded.
+[ground truth and gates](references/ground-truth.md).
+
+Keep the checks that would reveal a plausible-but-wrong result in the reviewer
+contract, never in the implementer's prompt; a worker satisfies what it can see,
+so visible checks alone mostly confirm what the contract already demanded. Select
+them from [the standing withheld checks](references/withheld-checks.md) instead of
+composing them from scratch, and use the same list to preempt the common failures
+in the contract, which is cheaper than catching them in review.
 
 Every provider call must produce at least one of:
 
@@ -64,10 +67,9 @@ Every provider call must produce at least one of:
 - an independent review verdict with file or command evidence;
 - maintained documentation tied to current repository behavior.
 
-When the main task cannot use urgent quota safely, draw from a prepared useful
-backlog: regression gaps, adversarial tests, performance baselines, dependency
-checks, documentation drift, technical-debt characterization, or alternative
-design analysis. Never invent duplicate work solely to drain quota.
+A call that cannot produce one of these does not belong in the run. Idle capacity
+costs nothing, while a round spent on work nobody needed costs the coordinator's
+attention, which is the resource that actually runs short.
 
 ## Verify and stop
 

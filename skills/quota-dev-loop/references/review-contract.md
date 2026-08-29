@@ -25,10 +25,10 @@ option reserved for high risk.
   came from. Derive expectations from a judge or another authority before the
   review starts; a withheld check with a guessed answer produces argument
   instead of evidence.
-- Aim them at the ways this task could pass while being wrong: data dropped
-  silently instead of reported, a claimed behavior that never executes, a
-  boundary compared with the wrong operator, evidence asserted in prose but
-  never produced, or a protection from an earlier round quietly removed.
+- Select the shapes this task can exhibit from
+  [the standing withheld checks](withheld-checks.md) rather than composing them
+  from scratch. Authoring is the expensive part of review; the shapes recur, the
+  expected values do not.
 - Re-verify the protections earlier rounds added. A gate is only worth its cost
   while it is still present.
 - A withheld check can itself be wrong. When the implementer disputes one with

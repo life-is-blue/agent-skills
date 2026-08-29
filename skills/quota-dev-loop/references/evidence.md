@@ -56,8 +56,9 @@ background behavior, and exit semantics cannot safely be assumed uniform.
 - The corpus contains **no subscription-quota evidence at all**. Every quota
   reference in it is a third-party API rate limit, not an AI subscription
   balance. The stated motivations were context preservation and cost arbitrage
-  between an expensive coordinator and a cheaper implementer. The routing rules
-  in this Skill are therefore design, not findings, and remain unvalidated.
+  between an expensive coordinator and a cheaper implementer, which is why
+  routing here is based on cost and capability and quota is only a constraint.
+  Any balance-based scheduling a host adds on top remains unvalidated.
 - The main corpus is one project and is weighted toward a high-risk refactor.
 - It contains no randomized comparison against a single-agent workflow, so the
   41% first-pass rate has no baseline to be measured against.

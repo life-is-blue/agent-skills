@@ -44,6 +44,11 @@ For fast mode, outcome, workspace, scope, acceptance, and delivery may be enough
 For deep mode, add a short progress artifact so a resumed worker does not repeat
 completed work.
 
+Before dispatching, read the contract side of
+[the standing withheld checks](withheld-checks.md). Most rejections come from a
+small set of recurring shapes, and wording the contract so a shape cannot arise
+costs less than finding it in review and paying for a repair round.
+
 ## Exclusions
 
 Do not include credentials, hidden reviewer checks, full unrelated chat history,

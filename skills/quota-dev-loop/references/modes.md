@@ -10,8 +10,8 @@ Use for a localized, reversible change with an obvious test surface.
 - One provider implements.
 - The controller reviews the diff and reruns the focused check, keeping at least
   one expectation to itself instead of announcing every check in advance.
-- Use a second provider only when urgent quota can produce a useful targeted
-  check without delaying the main path.
+- Add a second provider only when it can produce a useful targeted check without
+  delaying the main path.
 - A compact task contract is enough; omit sections that do not change behavior.
 
 ## Standard
@@ -26,8 +26,8 @@ non-trivial behavior.
 - The controller reruns the repository gate before integration.
 - A failed review produces a narrow fix contract, not a reissued task.
 
-This is the default for quota-aware development because it creates two useful,
-non-duplicative units of work: implementation and independent verification.
+This is the default, because it creates two useful, non-duplicative units of
+work: implementation and independent verification.
 
 ## Deep
 
@@ -41,8 +41,8 @@ irreversible data work, or tasks with an uncertain contract.
 - Use an implementer and an engine-diverse reviewer.
 - Scale withheld checks with risk, and re-verify the protections earlier rounds
   added rather than only the current round's work.
-- Spend additional urgent quota on adversarial design, negative tests, or a
-  competing approach only when its result can change the decision.
+- Add adversarial design, negative tests, or a competing approach only when the
+  result can change the decision.
 - Keep explicit human gates for scope changes and irreversible effects.
 
 ## Upgrade or downgrade

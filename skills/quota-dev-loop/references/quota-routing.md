@@ -26,12 +26,23 @@ or private endpoints in a provider profile.
 When exact values exist, compare normalized quota pressure as:
 
 ```text
-pressure = remaining_fraction / max(resets_in_hours / 24, 0.25)
+pressure = remaining_fraction / max(resets_in_hours / 24, 1 / 24)
 ```
+
+The floor exists only to keep an imminent reset from dividing by zero; keep it
+small enough that an hour from reset still outranks six hours from reset.
 
 The value is a scheduling hint, not a cross-vendor token comparison. When exact
 values do not exist, use the explicit qualitative pressure supplied by the user
 or host. `unknown` must remain unknown.
+
+## Cost of a role
+
+Independent review is not a cheap afterthought. A review brief carries expected
+values, reproduction steps, and withheld checks that the implementer never
+received, so it can cost several times the context of the task contract it
+judges. Budget the reviewer as a first-class consumer of quota, and do not
+schedule a review round on the assumption that it is a quick look at a diff.
 
 ## Assignment order
 

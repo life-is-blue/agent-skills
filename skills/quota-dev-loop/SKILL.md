@@ -46,8 +46,15 @@ bundled here. Do not silently switch providers after an infrastructure failure.
 
 For implementation or substantial investigation, write a frozen task contract
 using [the task contract](references/task-contract.md). Give each worker only the
-context needed for its role. Put independent checks in the reviewer contract,
-not in the implementer's prompt.
+context needed for its role.
+
+Before dispatching, establish what will decide the outcome independently of the
+worker's own report: an external judge where a reference exists, and numeric
+gates that may only move up. Read
+[ground truth and gates](references/ground-truth.md). Keep the checks that would
+reveal a plausible-but-wrong result in the reviewer contract, never in the
+implementer's prompt; a worker satisfies what it can see, so visible checks
+alone mostly confirm what the contract already demanded.
 
 Every provider call must produce at least one of:
 
@@ -69,6 +76,10 @@ worker's prose, decides whether evidence meets the gate.
 
 - Treat authentication, sandbox, timeout, malformed envelope, and missing-tool
   failures as infrastructure failures, not implementation failures.
+- Record open and withheld check results separately, so the value of withholding
+  stays measurable instead of assumed.
+- Repair a rejected candidate with a narrow fix contract that carries the
+  previous gates forward, not by reissuing the original task.
 - After the same substantive blocker fails twice, change provider or approach.
   After a third failure, stop and surface the evidence instead of spending more
   quota blindly.

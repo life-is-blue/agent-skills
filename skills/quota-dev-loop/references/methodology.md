@@ -10,6 +10,12 @@
   coordination cost.
 - Treat implementation summaries as claims. Tests, diffs, files, and reproduced
   behavior are evidence.
+- Establish ground truth outside the implementer, and state gates as numbers that
+  may only move up. An implementation and its own tests can agree on the same
+  mistaken reading of the specification.
+- Withhold the checks that would expose a plausible-but-wrong result. A worker
+  optimizes what it can see, so visible gates mostly confirm what the contract
+  already demanded.
 - Spend urgent quota on orthogonal work. Independent implementation, review,
   negative testing, and contract investigation are more valuable than asking
   several models for interchangeable summaries.
@@ -25,6 +31,10 @@
   improvement.
 - Independent models can share the same specification error. Engine diversity
   does not replace contract validation or real-environment tests.
+- Quota-based routing is design, not a finding. The source corpus optimized for
+  context preservation and cost arbitrage and contains no subscription-quota
+  evidence, so treat the routing rules as the least validated part of this
+  protocol.
 - This protocol does not expose subscription balances, install CLIs, authenticate
   accounts, create worktrees, or execute providers by itself.
 

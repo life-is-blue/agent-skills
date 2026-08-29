@@ -5,11 +5,47 @@ covering a multi-agent Rust rewrite between 2026-08-21 and 2026-08-23. Raw
 content is intentionally excluded because it contains private repository and
 session context.
 
-| Role in corpus | Artifact SHA-256 | Supported observation |
+| Role in corpus | Artifact SHA-256 | Records |
 |---|---|---|
-| Coordinator and task-book authoring | `fb65b4f91d59993b95ea15fdc2fedf9639f4cd726d0c438e420e37966ed9809d` | Repeated bounded task books reduced context transfer; the coordinator still had to resolve mistaken premises and decide the next phase. |
-| Agy implementation trajectory | `5a29dae1206416c3df0fefd39e14b9057e676864b8eabbdb444ee8c0fc94c8da` | Frozen goals, editable boundaries, progress files, retry limits, and machine checks supported long resumable implementation. |
-| Codex acceptance trajectory | `a9aa79afb257cc0e3a82f654a4c65bddf55cbfdfefbcd005298ccffac6dc01b9` | Independent reruns and adversarial checks found issues not established by implementer summaries alone. |
+| Coordinator, contract authoring, withheld checks | `fb65b4f91d59993b95ea15fdc2fedf9639f4cd726d0c438e420e37966ed9809d` | 405 |
+| Implementation trajectory | `5a29dae1206416c3df0fefd39e14b9057e676864b8eabbdb444ee8c0fc94c8da` | 5399 |
+| Independent acceptance trajectory | `a9aa79afb257cc0e3a82f654a4c65bddf55cbfdfefbcd005298ccffac6dc01b9` | 302 |
+
+## Measured observations
+
+Counts below are recoverable from the artifacts above.
+
+- **Withheld checks did the detection work.** Of 31 verdicts recording both
+  scores, the visible acceptance commands were incomplete in 5, while the
+  checks withheld from the implementer were incomplete in 17. In 15 of those
+  rounds — roughly half of all rounds — the implementer scored full marks on
+  every check it could see and still failed on checks it could not. This is the
+  strongest single result in the corpus and the reason withheld checks are
+  required rather than optional.
+- **What the withheld checks caught** was consistently the gap between a claim
+  and its execution: a retry path that computed backoff intervals but never
+  waited, a parameter documented as contract-driven but hard-coded, a delivery
+  record asserting verification without the outputs that would show it, a
+  business error that returned success, and a production identifier left in a
+  file that simultaneously claimed zero occurrences.
+- **First-pass acceptance was 41%** — 14 accepted against 20 rejected across 34
+  relayed verdicts. Multi-round repair was the normal case, not the exception.
+- **Review is cheaper in time than in context.** Acceptance rounds took between
+  1m50s and 15 minutes of wall clock, mostly 5 to 11 minutes, but the review
+  briefs averaged 5215 characters against 1655 for the task contracts they
+  judged, a ratio of about 3.2 to 1.
+- **Task contracts stayed small.** 36 contracts averaged 1655 characters within a
+  4000-character host limit, ranging from 746 for narrow repairs to 1964 for a
+  full round, dispatched at a median interval of 18 minutes over a 37.5-hour span
+  containing roughly 9.7 hours of active intervals.
+- **The reviewer was not infallible.** At least one rejection was itself wrong,
+  overturned by the controller citing a specific file and line in the reference
+  implementation, after which the contract was corrected instead of the working
+  code.
+- **Ground truth came from outside the implementer.** The resulting repository,
+  which is local and not bundled here, carries 19 judge scripts and 21
+  differential suites against the legacy engine, and its gate was stated as a
+  rising count of passing cases with zero ignored.
 
 Additional local implementation evidence came from a separate multi-CLI router
 whose adapters demonstrated that provider success envelopes, permissions,
@@ -17,10 +53,19 @@ background behavior, and exit semantics cannot safely be assumed uniform.
 
 ## Limits of the evidence
 
+- The corpus contains **no subscription-quota evidence at all**. Every quota
+  reference in it is a third-party API rate limit, not an AI subscription
+  balance. The stated motivations were context preservation and cost arbitrage
+  between an expensive coordinator and a cheaper implementer. The routing rules
+  in this Skill are therefore design, not findings, and remain unvalidated.
 - The main corpus is one project and is weighted toward a high-risk refactor.
-- It contains no randomized comparison against a single-agent workflow.
-- It supports the role separation and contract mechanisms as plausible reusable
-  rules, but does not establish that every task needs three providers.
+- It contains no randomized comparison against a single-agent workflow, so the
+  41% first-pass rate has no baseline to be measured against.
+- It supports the role separation, ground-truth, and contract mechanisms as
+  plausible reusable rules, but does not establish that every task needs three
+  providers.
+- Manual relay between providers was the dominant human cost in the corpus and is
+  outside this Skill's scope; the protocol assumes a host runner exists.
 - It does not provide reliable remaining-quota telemetry for any subscription.
 
 Use run receipts from new projects to test these rules across fast, standard,

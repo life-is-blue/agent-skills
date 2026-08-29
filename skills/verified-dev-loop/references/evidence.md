@@ -48,6 +48,12 @@ length measured from it.
   roughly 9.7 hours of active intervals. A fixed prompt bound against
   accumulating cross-round invariants is what makes restating them in every
   contract unaffordable.
+- **Requirements were settled by measurement and disclosure, not by
+  questioning.** The coordinator opened no clarifying-question round; it measured
+  the repositories and then decided. All 18 full contracts closed with a labeled
+  section listing the calls it had made on the user's behalf, and 12 also flagged
+  assumptions or guesses. The user's own reading guide for those contracts named
+  that section as one of three places worth reading.
 - **The remaining plan was not durable.** The coordinator was asked twice in one
   run, roughly 65 messages apart, how many contracts were still needed to reach
   the objective. The plan existed only in its context, while the per-round
@@ -77,8 +83,8 @@ background behavior, and exit semantics cannot safely be assumed uniform.
   reference in it is a third-party API rate limit, not an AI subscription
   balance. The stated motivations were context preservation and cost arbitrage
   between an expensive coordinator and a cheaper implementer, which is why
-  routing here is based on cost and capability and quota is only a constraint.
-  Any balance-based scheduling a host adds on top remains unvalidated.
+  routing here is based on cost and capability alone. Any balance-based
+  scheduling a host adds on top remains unvalidated.
 - The main corpus is one project and is weighted toward a high-risk refactor.
 - It contains no randomized comparison against a single-agent workflow, so the
   41% first-pass rate has no baseline to be measured against.

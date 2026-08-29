@@ -30,15 +30,15 @@
       "distribution": "protocol-only"
     },
     {
-      "name": "quota-dev-loop",
-      "distribution": "protocol-only"
-    },
-    {
       "name": "search-docs",
       "distribution": "adapter"
     },
     {
       "name": "skill-evolve-lite",
+      "distribution": "protocol-only"
+    },
+    {
+      "name": "verified-dev-loop",
       "distribution": "protocol-only"
     },
     {

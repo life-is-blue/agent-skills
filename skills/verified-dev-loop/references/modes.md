@@ -50,4 +50,4 @@ irreversible data work, or tasks with an uncertain contract.
 Upgrade when the contract is uncertain, failures are expensive, the change is
 hard to reverse, or the first review finds a systemic issue. Downgrade when the
 change becomes localized and the remaining checks are mechanical. Do not keep a
-deep loop running merely because it has already consumed substantial quota.
+deep loop running merely because it has already consumed substantial capacity.

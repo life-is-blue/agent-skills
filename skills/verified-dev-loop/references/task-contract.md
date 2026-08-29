@@ -41,6 +41,10 @@ Include only fields that change execution:
    success is not.
 10. **Delivery envelope:** changed files, commands and exit codes, unresolved
     issues, revision, and concise result.
+11. **Disclosed calls:** one labeled section listing every decision taken on the
+    user's behalf and every unverified assumption. It is the section a reviewing
+    human reads first, so a wrong call is vetoed before it is implemented rather
+    than after.
 
 For fast mode, outcome, workspace, scope, acceptance, and delivery may be enough.
 For a multi-round run, open with a read-back of the standing constraints and keep

@@ -1,13 +1,19 @@
 ---
-name: quota-dev-loop
-description: Route substantial software development across multiple subscribed coding CLIs so each call produces independently verified work, separating plan, implementation, and acceptance across providers. Use when the user asks to coordinate heterogeneous coding agents, get more out of several AI subscriptions, or run a plan/implement/review loop with independent acceptance; do not use for a simple single-agent edit, unapproved provider spending, or work without a verifiable outcome.
+name: verified-dev-loop
+description: Run substantial software development as repeated rounds in which one coding CLI implements a frozen contract and a different one decides whether it passes, so every round ends in independently verified work. Use when the user asks to coordinate heterogeneous coding agents, delegate implementation and keep acceptance separate, get more out of several AI subscriptions, or run a plan/implement/review loop; do not use for a simple single-agent edit, unapproved provider spending, or work without a verifiable outcome.
 ---
 
-# Quota Dev Loop
+# Verified Dev Loop
 
 Optimize for verified work completed, not for tokens consumed. Separate the role
 that decides from the role that executes, put ground truth outside the
 implementer, and treat every worker report as a claim until evidence confirms it.
+
+One round is: measure the ground and disclose the calls made on the user's
+behalf, freeze a contract and dispatch it, judge the result against evidence the
+implementer never saw, then advance the plan or issue a narrow repair. Direction
+is held by the constraint set and the plan ledger in the repository, not by the
+coordinator's attention.
 
 ## Set up once per host
 
@@ -36,6 +42,23 @@ Collect or confirm:
 - the task, repository, starting revision, scope, and external side effects;
 - the required quality floor and machine-verifiable completion signals;
 - whether the user authorized a multi-provider run for this task.
+
+Measure before asking. Run the commands, read the code, and record real baseline
+numbers, because a command named in a document may not exist, a lint step may be
+a placeholder that always passes, and a stated capability may not match the
+installed one. Anything a measurement can settle is not a question for the user.
+
+What measurement cannot settle is usually a judgment call: a direction tradeoff,
+how strict acceptance should be, how much risk is acceptable. Ask about those
+only while the user is present and only in one round, giving each question a
+short set of options and a recommendation.
+
+Otherwise decide, and disclose. List every call made on the user's behalf in one
+labeled section of the contract, and mark anything unverified as an assumption.
+Deciding silently takes authority the user did not give; deciding in the open
+gives them a cheap veto, which is why this section belongs where they will
+actually look. Answer these once per objective and keep them in the constraint
+set, not in each round's prompt.
 
 ## Choose a mode and route roles
 

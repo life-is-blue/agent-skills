@@ -15,9 +15,9 @@ its scripts and references remain available.
 | `office-mpp` | bundled | Read, analyze, export, create, and edit Microsoft Project or MSPDI files |
 | `openclaw-coding-agent` | adapter | Run supported coding CLIs through OpenClaw sessions and notifications |
 | `pdf-to-markdown` | protocol-only | Guide a host-provided PDF-to-Markdown workflow |
-| `quota-dev-loop` | protocol-only | Route development across several coding-agent subscriptions with separated implementation and independent acceptance |
 | `search-docs` | adapter | Search and read the git-library documentation service |
 | `skill-evolve-lite` | protocol-only | Improve a Skill through train traces, validation gates, and rollback |
+| `verified-dev-loop` | protocol-only | Run development as rounds of delegated implementation that each stop at an independent acceptance gate |
 | `wechat-publish` | protocol-only | Guide a host-provided WeChat publishing workflow |
 
 The machine-readable list and delivery type are in

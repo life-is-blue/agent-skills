@@ -31,29 +31,34 @@ length measured from it.
   record asserting verification without the outputs that would show it, a
   business error that returned success, and a production identifier left in a
   file that simultaneously claimed zero occurrences.
-- **First-pass acceptance was 41%** — 14 accepted against 20 rejected across 34
-  relayed verdicts. Multi-round repair was the normal case, not the exception.
+- **Distinct relayed verdict texts were 37.5% accepted** — 12 accepted against 20
+  rejected after removing two exact duplicate accepted relays from 34 messages.
+  These texts mix initial reviews with repair re-reviews, so they do not establish
+  a first-pass acceptance rate. Multi-round repair nevertheless appeared often.
 - **Review was cheap to author and expensive to run.** The 31 review briefs
-  measured a median of 1106 characters, about 0.45 times the contract they
-  judged, because a brief points at a judge and its expected values instead of
-  restating a specification. The acceptance rounds themselves took 1m50s to 15
-  minutes of wall clock, mostly 5 to 11 minutes, since the reviewer reran the
-  suite and built its own harness. Review consumes capacity as execution, not as
-  authoring.
-- **Task contracts ran against a hard prompt bound.** 34 full contracts measured
-  a median of 2704 and a maximum of 3859 characters against the 4000-character
+  measured a median of 1127 characters, shorter than the 2704-character median
+  implementation dispatch, because a brief points at a judge and its expected
+  values instead of restating a specification. The acceptance rounds themselves
+  took 1m50s to 15 minutes of wall clock, mostly 5 to 11 minutes, since the
+  reviewer reran the suite and built its own harness. Review consumes capacity as
+  execution, not as authoring.
+- **Task contracts ran against a hard prompt bound.** The 34 implementation
+  dispatches measured a median of 2704 and a maximum of 3859 characters against
+  the 4000-character
   `/goal` limit declared by the Skill that authored them, so the largest consumed
-  96% of the cap; 3 narrow repair contracts measured 723 to 1434. They were
-  dispatched at a median interval of 18 minutes over a 37.5-hour span containing
-  roughly 9.7 hours of active intervals. A fixed prompt bound against
-  accumulating cross-round invariants is what makes restating them in every
-  contract unaffordable.
-- **Requirements were settled by measurement and disclosure, not by
-  questioning.** The coordinator opened no clarifying-question round; it measured
-  the repositories and then decided. All 18 full contracts closed with a labeled
-  section listing the calls it had made on the user's behalf, and 12 also flagged
-  assumptions or guesses. The user's own reading guide for those contracts named
-  that section as one of three places worth reading.
+  96% of the cap; 3 narrow repair contracts measured 723 to 1434. Here, a
+  contract is the outer Markdown-fenced implementation dispatch in the
+  coordinator artifact. They were dispatched at a median interval of 18 minutes
+  over a 37.5-hour span containing roughly 9.7 hours of active intervals. A fixed
+  prompt bound against accumulating cross-round invariants is what makes
+  restating them in every contract unaffordable.
+- **Requirements used questions, measurement, and disclosure.** The coordinator
+  made 10 `AskQuestion` calls, while also measuring the repositories and deciding
+  matters that measurement had settled. Of the 34 implementation dispatches, 18
+  contained a labeled `我替领导拍的板` section listing calls made on the user's
+  behalf; 9 of those sections explicitly marked assumptions, guesses, or
+  unverified claims. The user's own reading guide for those contracts named that
+  section as one of three places worth reading.
 - **The remaining plan was not durable.** The coordinator was asked twice in one
   run, roughly 65 messages apart, how many contracts were still needed to reach
   the objective. The plan existed only in its context, while the per-round
@@ -86,8 +91,9 @@ background behavior, and exit semantics cannot safely be assumed uniform.
   routing here is based on cost and capability alone. Any balance-based
   scheduling a host adds on top remains unvalidated.
 - The main corpus is one project and is weighted toward a high-risk refactor.
-- It contains no randomized comparison against a single-agent workflow, so the
-  41% first-pass rate has no baseline to be measured against.
+- It contains no randomized comparison against a single-agent workflow, and the
+  relayed verdict texts mix initial reviews with repair re-reviews, so they do not
+  provide a first-pass baseline.
 - It supports the role separation, ground-truth, and contract mechanisms as
   plausible reusable rules, but does not establish that every task needs three
   providers.

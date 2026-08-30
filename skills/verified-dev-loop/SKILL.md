@@ -50,8 +50,9 @@ installed one. Anything a measurement can settle is not a question for the user.
 
 What measurement cannot settle is usually a judgment call: a direction tradeoff,
 how strict acceptance should be, how much risk is acceptable. Ask about those
-only while the user is present and only in one round, giving each question a
-short set of options and a recommendation.
+while the user is present, giving each question a short set of options and a
+recommendation. Consolidate them into one round by default, but ask again when
+new evidence exposes a decision or invalidates an earlier assumption.
 
 Otherwise decide, and disclose. List every call made on the user's behalf in one
 labeled section of the contract, and mark anything unverified as an assumption.

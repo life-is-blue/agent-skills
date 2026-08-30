@@ -1,7 +1,8 @@
 # Standing withheld checks
 
-In the source corpus, 20 rejections across 34 review rounds fell into the six
-shapes below. None of them required insight specific to that project: the
+In the source corpus, 20 rejected verdicts among 32 distinct relayed verdict
+texts fell into the six shapes below. None of them required insight specific to
+that project: the
 failures were shaped by delegation itself, not by the domain. So do not invent
 withheld checks from scratch each round. Select the shapes this task can exhibit,
 fill in the input and the authoritative expected value, and spend the saved

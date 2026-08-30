@@ -5,17 +5,18 @@ contract is a context-transfer boundary, not a transcript dump.
 
 ## Size and form
 
-- One contract, one dispatch. Do not split a single task across several prompts
-  or require the user to assemble files before work can start.
+- One atomic contract, one dispatch. Do not fragment one dispatch across several
+  prompts or require the user to assemble files before work can start. Split an
+  oversized objective into independently verifiable dispatches instead.
 - Respect the host's prompt or command size limit as a hard bound when the text
   is the dispatch. A contract that does not fit is evidence that the task is too
   large: split it and issue one piece at a time. When the runner can read the
   repository, write the contract to a path and dispatch the path instead, per
   [durable state between rounds](durable-state.md).
 - Point at the file that is the specification — test suite, schema, contract
-  file, acceptance script, or design document — and give its path. Do not
-  paraphrase it. A paraphrase becomes a second specification that will diverge
-  from the first, and the worker cannot tell which one governs.
+  file, acceptance script, or design document — and give its path. Summarize the
+  intended outcome and scope, but do not let that summary replace or override the
+  authoritative specification.
 - Separate law from advice. A prohibition is binding and must trace to a measured
   fact or a user decision; a suggestion is context the worker may override with a
   recorded reason. Writing advice as law takes away decisions the worker will

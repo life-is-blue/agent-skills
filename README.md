@@ -40,8 +40,10 @@ flowchart TB
 
     subgraph control[Control plane]
         C[Coordinator<br/>verified-dev-loop]
-        S[(Repository state<br/>constraints · plan ledger · contracts · gates)]
+        S[(Role-visible repository state<br/>run · constraints · ledger · contracts)]
+        P[(Host-private state<br/>withheld checks · raw logs)]
         S -->|read constraints, plan, and gates| C
+        P -->|private evidence| C
     end
 
     subgraph transport[Host transport]
@@ -54,20 +56,26 @@ flowchart TB
     end
 
     U <--> C
-    C -->|frozen task or narrow repair| A
+    C -->|frozen task or narrow repair<br/>plus result path| A
     A -->|dispatch| I
-    I -->|candidate and evidence| A
-    A -->|return| C
+    I -->|implementation envelope| A
+    A -->|transport envelope| C
     C -->|review contract and withheld checks| A
     A -->|dispatch| R
-    R -->|open and withheld verdict| A
+    R -->|review verdict envelope| A
+    A -->|transport envelope| C
+    A -->|raw logs| P
     C -->|go: advance ledger| S
     C -->|no-go: issue narrow repair| A
 ```
 
 The Skill remains `protocol-only`: it does not bundle a runner. A host can use
 the repository's `coding-agent` or `codex-delegate` adapters, another monitored
-CLI adapter, or a native subagent API to implement the transport layer.
+CLI adapter, or a native subagent API to implement the transport layer. A
+multi-round run defaults to `.verified-dev-loop/<run-id>/` for role-visible
+state; withheld checks and raw transport state stay outside the repository.
+Transport success, implementation delivery, and acceptance are three separate
+claims, and only the coordinator advances the run state.
 
 ## Install
 

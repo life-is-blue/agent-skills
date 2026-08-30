@@ -87,4 +87,5 @@ A shape that stops finding anything has either been absorbed into the contract,
 which is the desired outcome, or is being aimed at what the contract already
 demanded. Check which, using the open and withheld results recorded per round in
 [the review contract](review-contract.md). Add a shape only when a defect
-escapes review twice for the same reason.
+recurs for the same reason across traces, or when a controlled comparison shows
+that the shape finds it without producing unacceptable noise.

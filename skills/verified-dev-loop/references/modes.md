@@ -26,8 +26,9 @@ non-trivial behavior.
 - The controller reruns the repository gate before integration.
 - A failed review produces a narrow fix contract, not a reissued task.
 
-This is the default, because it creates two useful, non-duplicative units of
-work: implementation and independent verification.
+Choose this when the value of independent verification exceeds its coordination
+cost. Do not make it a universal default solely because the work spans several
+files.
 
 ## Deep
 

@@ -6,6 +6,10 @@ that bound every round, and the choice of what to restate lives only in the
 coordinator's context, where nothing checks it. Put the state that must outlive a
 single dispatch in the repository and let the contract point at it.
 
+Use the public run directory and private host-state split in
+[the runtime contract](runtime-contract.md) when more than one coordinator or
+transport must discover the same run.
+
 ## Constraint set
 
 Keep one file for what must hold in every round: prohibitions, purity or layering
@@ -13,10 +17,11 @@ rules, preserved defects that callers already depend on, and forbidden strings.
 
 - Record for each entry whether a mechanical guard enforces it, and name the
   guard. An unguarded entry is a promise; a guarded one is a fact.
-- When review finds the same entry violated twice, give it a guard instead of
-  stronger wording. Converting a recurring finding into a lint rule, meta-test,
-  or gate is what stops it from consuming contract space and reviewer attention
-  in every later round.
+- When review finds a recurring, mechanically detectable violation, prefer a
+  guard to stronger wording. Converting it into a lint rule, meta-test, or gate
+  is what stops it from consuming contract space and reviewer attention in every
+  later round. Do not add a guard merely because an arbitrary count was reached;
+  first confirm that it enforces the intended rule without false positives.
 - Cite this file by path from the contract and restate nothing out of it. A
   restatement becomes a second specification that can diverge from the first.
 

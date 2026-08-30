@@ -16,12 +16,14 @@ implementer's prose or silently fix the work.
 
 ## Withheld checks
 
-A worker satisfies the checks it can see. The checks that find everything else
-have to be withheld, so they are part of every independent review rather than an
-option reserved for high risk.
+A worker can optimize for checks it sees. When a task has a plausible silent
+failure and the controller can derive the expected result from an authority,
+withhold that check from the implementer. The source corpus supports withheld
+checks as a useful defect-finding mechanism, not a requirement to invent one for
+every independent review.
 
 - The controller writes them and keeps them out of the task contract, the
-  implementer's prompt, and the repository.
+  implementer's prompt, and the role-visible repository state.
 - Each check states the input, the expected value, and where that expectation
   came from. Derive expectations from a judge or another authority before the
   review starts; a withheld check with a guessed answer produces argument
@@ -46,7 +48,7 @@ option reserved for high risk.
 2. Rerun the relevant tests or reproduce the behavior independently.
 3. Confirm the judge and gates are intact, per
    [ground truth and gates](ground-truth.md).
-4. Run the withheld checks against the candidate.
+4. Run the applicable withheld checks against the candidate.
 5. Exercise silent-failure paths: empty output, partial writes, stale state,
    timeouts, misleading exit zero, or disabled assertions as applicable.
 6. Check whether implementation and tests merely agree on the same mistaken
@@ -56,11 +58,15 @@ option reserved for high risk.
 
 ## Verdict envelope
 
-Use a machine-readable equivalent of:
+Write the verdict to the review path declared by the runtime contract, using a
+machine-readable equivalent of:
 
 ```json
 {
+  "schema_version": 1,
+  "role": "reviewer",
   "verdict": "go",
+  "round_id": "round-1",
   "start_revision": "...",
   "candidate_revision": "...",
   "checks": [

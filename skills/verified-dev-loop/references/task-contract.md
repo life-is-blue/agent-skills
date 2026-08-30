@@ -41,7 +41,9 @@ Include only fields that change execution:
    A well-documented blocked case is a valid delivery; a worse result presented as
    success is not.
 10. **Delivery envelope:** changed files, commands and exit codes, unresolved
-    issues, revision, and concise result.
+    issues, revision, and concise result. For a portable run, declare the JSON
+    result path and use the implementation envelope in
+    [the runtime contract](runtime-contract.md).
 11. **Disclosed calls:** one labeled section listing every decision taken on the
     user's behalf and every unverified assumption. It is the section a reviewing
     human reads first, so a wrong call is vetoed before it is implemented rather

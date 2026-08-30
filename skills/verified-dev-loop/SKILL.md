@@ -12,6 +12,11 @@ returns artifacts; it does not decide what should pass. Give implementers and
 reviewers only the context their roles require, not the coordinator's full
 context.
 
+For a run that spans rounds or coordinator contexts, read and apply
+[the runtime contract](references/runtime-contract.md). It defines the lifecycle,
+portable state, transport boundary, and role envelopes. The coordinator is the
+only role allowed to advance that lifecycle.
+
 Optimize for verified work completed, not for tokens consumed. Separate the role
 that decides from the role that executes, put ground truth outside the
 implementer, and treat every worker report as a claim until evidence confirms it.
@@ -37,6 +42,11 @@ minimal smoke, because a documented capability and the installed behavior diverg
 often enough to matter. Read the matching provider reference in the
 `coding-agent` Skill for per-CLI facts rather than restating them here, and
 re-confirm after a CLI upgrade.
+
+Confirm that the selected transport can dispatch an exact contract, preserve the
+chosen workspace and permissions, report terminal state, expose logs and the
+declared result artifact, and cancel a job. Record optional capabilities such as
+resume or usage reporting; do not require them from every host.
 
 Do not ask for subscription balances. No provider exposes reliable telemetry, and
 the usage reported by one call describes that call alone. When a subscription
@@ -110,18 +120,21 @@ dispatch with a read-back of them. Read
 [durable state between rounds](references/durable-state.md). A contract is
 bounded while the invariants accumulate, so restating them each round costs more
 of that bound and leaves the selection unchecked in the coordinator's context.
+Use the public and private state split in
+[the runtime contract](references/runtime-contract.md); never put withheld checks
+or credentials in the role-visible run directory.
 
 Before dispatching, establish what will decide the outcome independently of the
 worker's own report: an external judge where a reference exists, and numeric
 gates that may only move up. Read
 [ground truth and gates](references/ground-truth.md).
 
-Keep the checks that would reveal a plausible-but-wrong result in the reviewer
-contract, never in the implementer's prompt; a worker satisfies what it can see,
-so visible checks alone mostly confirm what the contract already demanded. Select
-them from [the standing withheld checks](references/withheld-checks.md) instead of
-composing them from scratch, and use the same list to preempt the common failures
-in the contract, which is cheaper than catching them in review.
+When an authoritative expectation can expose a plausible-but-wrong result, keep
+that check in the reviewer contract rather than the implementer's prompt. Scale
+withheld checks with risk instead of manufacturing guessed expectations merely
+to satisfy the protocol. Select useful shapes from
+[the standing withheld checks](references/withheld-checks.md), and use the same
+list to preempt common failures in the task contract.
 
 Every provider call must produce at least one of:
 
@@ -142,13 +155,16 @@ worker's prose, decides whether evidence meets the gate.
 
 - Treat authentication, sandbox, timeout, malformed envelope, and missing-tool
   failures as infrastructure failures, not implementation failures.
+- Keep the transport envelope, implementation envelope, and review verdict
+  separate. Process success proves neither a valid delivery nor acceptance.
 - Record open and withheld check results separately, so the value of withholding
   stays measurable instead of assumed.
 - Repair a rejected candidate with a narrow fix contract that carries the
   previous gates forward, not by reissuing the original task.
-- After the same substantive blocker fails twice, change provider or approach.
-  After a third failure, stop and surface the evidence instead of spending more
-  capacity blindly.
+- Declare a retry, time, or cost bound proportional to the run's risk before
+  dispatch. When a blocker recurs, use the evidence to change contract, provider,
+  or approach; stop at the declared bound instead of applying a universal retry
+  count.
 - Do not merge, push, deploy, or mutate external systems unless the user has
   authorized that effect.
 - Record provider, role, start revision, output artifact, commands, verdict,

@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -73,6 +75,257 @@ def test_start_wait_status_and_log_with_fake_codex(tmp_path: Path):
     assert "agent=codex" in status.stdout
     assert "--ask-for-approval never exec --sandbox workspace-write -" in log.stdout
     assert "implement the fixture" in log.stdout
+
+
+def test_json_envelope_records_required_result_artifact(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(
+        bin_dir,
+        "codex",
+        'cat >/dev/null\nmkdir -p .verified-dev-loop/run/deliveries\n'
+        'printf \'{"role":"implementer","status":"completed"}\\n\' '
+        '> .verified-dev-loop/run/deliveries/round-1.json\n',
+    )
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("write the declared result file\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+    result_file = ".verified-dev-loop/run/deliveries/round-1.json"
+
+    started = run_runner(
+        "start",
+        "--agent",
+        "codex",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--result-file",
+        result_file,
+        "--state-dir",
+        state,
+        "--json",
+        env=env,
+    )
+    started_envelope = json.loads(started.stdout)
+    sid = started_envelope["session_id"]
+    waited = run_runner(
+        "wait",
+        sid,
+        "--state-dir",
+        state,
+        "--timeout",
+        "5",
+        "--json",
+        env=env,
+    )
+    status = run_runner(
+        "status", sid, "--state-dir", state, "--json", env=env
+    )
+
+    payload = (tmp_path / result_file).read_bytes()
+    waited_envelope = json.loads(waited.stdout)
+    status_envelope = json.loads(status.stdout)
+    assert started_envelope["schema_version"] == 1
+    assert started_envelope["result_artifact"]["required"] is True
+    assert waited_envelope["status"] == "completed"
+    assert waited_envelope["result_artifact"] == {
+        "required": True,
+        "path": str(tmp_path / result_file),
+        "status": "present",
+        "bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+    assert status_envelope["result_artifact"]["status"] == "present"
+    assert status_envelope["errors"] == []
+
+
+def test_required_result_missing_is_adapter_failure(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "codex", "cat >/dev/null\n")
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("omit the result\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+
+    started = run_runner(
+        "start",
+        "--agent",
+        "codex",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--result-file",
+        "delivery.json",
+        "--state-dir",
+        state,
+        "--json",
+        env=env,
+    )
+    sid = json.loads(started.stdout)["session_id"]
+    waited = run_runner(
+        "wait",
+        sid,
+        "--state-dir",
+        state,
+        "--timeout",
+        "5",
+        "--json",
+        env=env,
+        check=False,
+    )
+
+    envelope = json.loads(waited.stdout)
+    assert waited.returncode == 2
+    assert envelope["status"] == "completed"
+    assert envelope["worker_exit_code"] == 0
+    assert envelope["result_artifact"]["status"] == "missing"
+    assert envelope["errors"][0]["code"] == "E_RESULT_MISSING"
+
+
+def test_json_preserves_nonzero_worker_exit(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "codex", "cat >/dev/null\nexit 7\n")
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("fail clearly\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+
+    started = run_runner(
+        "start",
+        "--agent",
+        "codex",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--state-dir",
+        state,
+        "--json",
+        env=env,
+    )
+    waited = run_runner(
+        "wait",
+        json.loads(started.stdout)["session_id"],
+        "--state-dir",
+        state,
+        "--timeout",
+        "5",
+        "--json",
+        env=env,
+        check=False,
+    )
+
+    envelope = json.loads(waited.stdout)
+    assert waited.returncode == 7
+    assert envelope["status"] == "failed"
+    assert envelope["worker_exit_code"] == 7
+    assert envelope["errors"][0]["code"] == "E_WORKER_FAILED"
+
+
+def test_result_symlink_cannot_escape_workdir(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(
+        bin_dir,
+        "codex",
+        "cat >/dev/null\nln -s /etc/hosts delivery.json\n",
+    )
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("write a result\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+
+    started = run_runner(
+        "start",
+        "--agent",
+        "codex",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--result-file",
+        "delivery.json",
+        "--state-dir",
+        state,
+        "--json",
+        env=env,
+    )
+    waited = run_runner(
+        "wait",
+        json.loads(started.stdout)["session_id"],
+        "--state-dir",
+        state,
+        "--timeout",
+        "5",
+        "--json",
+        env=env,
+        check=False,
+    )
+
+    envelope = json.loads(waited.stdout)
+    assert waited.returncode == 2
+    assert envelope["result_artifact"]["status"] == "outside-workdir"
+    assert envelope["errors"][0]["code"] == "E_RESULT_OUTSIDE_WORKDIR"
+
+
+def test_result_file_must_be_a_safe_relative_path(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "codex", "cat >/dev/null\n")
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("noop\n", encoding="utf-8")
+
+    result = run_runner(
+        "start",
+        "--agent",
+        "codex",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--result-file",
+        "../delivery.json",
+        "--state-dir",
+        tmp_path / "state",
+        env=runner_env(bin_dir),
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "E_INPUT: --result-file must stay inside the workdir" in result.stderr
+
+
+def test_preexisting_result_file_is_rejected_as_stale(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "codex", "cat >/dev/null\n")
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("noop\n", encoding="utf-8")
+    (tmp_path / "delivery.json").write_text("stale\n", encoding="utf-8")
+
+    result = run_runner(
+        "start",
+        "--agent",
+        "codex",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--result-file",
+        "delivery.json",
+        "--state-dir",
+        tmp_path / "state",
+        env=runner_env(bin_dir),
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "E_INPUT: result file already exists: delivery.json" in result.stderr
 
 
 def test_tclaude_safe_mapping_is_default(tmp_path: Path):
@@ -257,6 +510,94 @@ def test_stop_marks_running_worker_failed(tmp_path: Path):
     assert "status=stopping" in stopped.stdout
     assert waited.returncode == 143
     assert "status=failed" in waited.stdout
+
+
+def test_json_stop_and_wait_report_cancellation(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "codex", "exec sleep 30\n")
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("wait\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+
+    started = run_runner(
+        "start",
+        "--agent",
+        "codex",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--state-dir",
+        state,
+        "--json",
+        env=env,
+    )
+    sid = json.loads(started.stdout)["session_id"]
+    stopped = run_runner(
+        "stop", sid, "--state-dir", state, "--json", env=env
+    )
+    waited = run_runner(
+        "wait",
+        sid,
+        "--state-dir",
+        state,
+        "--timeout",
+        "5",
+        "--json",
+        env=env,
+        check=False,
+    )
+
+    assert json.loads(stopped.stdout)["status"] == "stopping"
+    waited_envelope = json.loads(waited.stdout)
+    assert waited.returncode == 143
+    assert waited_envelope["status"] == "cancelled"
+    assert waited_envelope["worker_exit_code"] == 143
+
+
+def test_json_wait_timeout_leaves_worker_running(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "codex", "exec sleep 30\n")
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("wait\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+
+    started = run_runner(
+        "start",
+        "--agent",
+        "codex",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--state-dir",
+        state,
+        "--json",
+        env=env,
+    )
+    sid = json.loads(started.stdout)["session_id"]
+    waited = run_runner(
+        "wait",
+        sid,
+        "--state-dir",
+        state,
+        "--timeout",
+        "0",
+        "--json",
+        env=env,
+        check=False,
+    )
+    stopped = run_runner("stop", sid, "--state-dir", state, env=env)
+
+    envelope = json.loads(waited.stdout)
+    assert waited.returncode == 124
+    assert envelope["status"] == "running"
+    assert envelope["wait_timed_out"] is True
+    assert "status=stopping" in stopped.stdout
 
 
 def test_explicit_missing_provider_fails_clearly(tmp_path: Path):

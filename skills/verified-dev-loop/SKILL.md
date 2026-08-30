@@ -1,9 +1,16 @@
 ---
 name: verified-dev-loop
-description: Run substantial software development as repeated rounds in which one coding CLI implements a frozen contract and a different one decides whether it passes, so every round ends in independently verified work. Use when the user asks to coordinate heterogeneous coding agents, delegate implementation and keep acceptance separate, get more out of several AI subscriptions, or run a plan/implement/review loop; do not use for a simple single-agent edit, unapproved provider spending, or work without a verifiable outcome.
+description: Coordinate substantial software development as repeated rounds that freeze delegated work, collect evidence, and end at an acceptance gate. Use when the user asks a primary agent to coordinate coding agents, keep implementation and acceptance separate, or run a plan/implement/review loop; do not use for a simple single-agent edit, unapproved provider spending, or work without a verifiable outcome.
 ---
 
 # Verified Dev Loop
+
+Load this Skill in the coordinator. It defines the control plane: scope, frozen
+contracts, acceptance evidence, durable state, and stop decisions. A native
+subagent API or host-provided CLI adapter transports role-specific contracts and
+returns artifacts; it does not decide what should pass. Give implementers and
+reviewers only the context their roles require, not the coordinator's full
+context.
 
 Optimize for verified work completed, not for tokens consumed. Separate the role
 that decides from the role that executes, put ground truth outside the

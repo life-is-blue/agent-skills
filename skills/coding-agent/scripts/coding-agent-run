@@ -489,7 +489,7 @@ wait_session() {
 stop_session() {
   parse_session_options "$@"
   [[ -z "$TIMEOUT" ]] || die '--timeout is only valid with wait'
-  local status pid child_pid
+  local status pid
   status=$(session_status "$SESSION_DIR")
   if [[ "$status" != running ]]; then
     if [[ "$JSON_OUTPUT" == 1 ]]; then
@@ -501,10 +501,6 @@ stop_session() {
   fi
   date -u +%Y-%m-%dT%H:%M:%SZ >"$SESSION_DIR/cancel_requested"
   pid=$(<"$SESSION_DIR/pid")
-  if [[ -f "$SESSION_DIR/child_pid" ]]; then
-    child_pid=$(<"$SESSION_DIR/child_pid")
-    kill -TERM "$child_pid" 2>/dev/null || true
-  fi
   kill -TERM "$pid" 2>/dev/null || true
   if [[ "$JSON_OUTPUT" == 1 ]]; then
     emit_json "$SESSION_ID" "$SESSION_DIR" stopping

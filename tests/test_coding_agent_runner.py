@@ -711,6 +711,62 @@ def test_json_stop_and_wait_report_cancellation(tmp_path: Path):
     assert waited_envelope["worker_exit_code"] == 143
 
 
+def test_cancel_acknowledgement_wins_child_exit_143_race(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(
+        bin_dir,
+        "codex",
+        "cat >/dev/null\ntrap 'exit 143' TERM\nprintf ready > provider-ready\nexec sleep 30\n",
+    )
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("wait\n", encoding="utf-8")
+    env = runner_env(bin_dir)
+
+    for attempt in range(10):
+        workdir = tmp_path / f"work-{attempt}"
+        workdir.mkdir()
+        state = tmp_path / f"state-{attempt}"
+        started = run_runner(
+            "start",
+            "--agent",
+            "codex",
+            "--workdir",
+            workdir,
+            "--prompt-file",
+            prompt,
+            "--state-dir",
+            state,
+            "--json",
+            env=env,
+        )
+        sid = json.loads(started.stdout)["session_id"]
+        for _ in range(100):
+            if (workdir / "provider-ready").exists():
+                break
+            time.sleep(0.01)
+        assert (workdir / "provider-ready").exists()
+
+        stopped = run_runner(
+            "stop", sid, "--state-dir", state, "--json", env=env
+        )
+        waited = run_runner(
+            "wait",
+            sid,
+            "--state-dir",
+            state,
+            "--timeout",
+            "5",
+            "--json",
+            env=env,
+            check=False,
+        )
+
+        assert json.loads(stopped.stdout)["status"] == "stopping"
+        assert waited.returncode == 143
+        assert json.loads(waited.stdout)["status"] == "cancelled"
+
+
 def test_stop_stays_stopping_while_child_ignores_term(tmp_path: Path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

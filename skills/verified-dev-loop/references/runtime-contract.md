@@ -66,6 +66,11 @@ output are optional capabilities. Probe the installed transport with local help
 and a minimal smoke, record its capabilities in `run.json`, and do not silently
 change provider or permissions after dispatch.
 
+Record whether the host preserves detached processes between tool calls. Use a
+synchronous transport when it reaps them; use background dispatch only after a
+smoke proves that its job identity remains live in the next coordinator call.
+Routing and reroute facts belong here, not in the implementer's work contract.
+
 The transport envelope must keep process outcome separate from result-artifact
 outcome. At minimum it carries a schema version, job or session ID, provider,
 status, worker exit code, worktree, timestamps, log location, result-artifact

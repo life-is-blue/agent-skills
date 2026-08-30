@@ -132,6 +132,7 @@ def test_json_envelope_records_required_result_artifact(tmp_path: Path):
     assert started_envelope["schema_version"] == 1
     assert started_envelope["result_artifact"]["required"] is True
     assert waited_envelope["status"] == "completed"
+    assert waited_envelope["finished_at"] is not None
     assert waited_envelope["result_artifact"] == {
         "required": True,
         "path": str(tmp_path / result_file),
@@ -141,6 +142,71 @@ def test_json_envelope_records_required_result_artifact(tmp_path: Path):
     }
     assert status_envelope["result_artifact"]["status"] == "present"
     assert status_envelope["errors"] == []
+
+
+def test_run_returns_one_terminal_json_envelope(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(
+        bin_dir,
+        "codex",
+        "cat >/dev/null\nprintf '{\"status\":\"completed\"}\\n' > delivery.json\n",
+    )
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("write the result\n", encoding="utf-8")
+
+    result = run_runner(
+        "run",
+        "--agent",
+        "codex",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--result-file",
+        "delivery.json",
+        "--state-dir",
+        tmp_path / "state",
+        "--json",
+        env=runner_env(bin_dir),
+    )
+
+    envelope = json.loads(result.stdout)
+    assert envelope["status"] == "completed"
+    assert envelope["worker_exit_code"] == 0
+    assert envelope["result_artifact"]["status"] == "present"
+    assert envelope["errors"] == []
+
+
+def test_run_missing_required_result_returns_adapter_failure(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "codex", "cat >/dev/null\n")
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("omit the result\n", encoding="utf-8")
+
+    result = run_runner(
+        "run",
+        "--agent",
+        "codex",
+        "--workdir",
+        tmp_path,
+        "--prompt-file",
+        prompt,
+        "--result-file",
+        "delivery.json",
+        "--state-dir",
+        tmp_path / "state",
+        "--json",
+        env=runner_env(bin_dir),
+        check=False,
+    )
+
+    envelope = json.loads(result.stdout)
+    assert result.returncode == 2
+    assert envelope["status"] == "completed"
+    assert envelope["worker_exit_code"] == 0
+    assert envelope["result_artifact"]["status"] == "missing"
 
 
 def test_required_result_missing_is_adapter_failure(tmp_path: Path):

@@ -21,6 +21,10 @@ contract is a context-transfer boundary, not a transcript dump.
   fact or a user decision; a suggestion is context the worker may override with a
   recorded reason. Writing advice as law takes away decisions the worker will
   make better in context.
+- Keep transport routing out of the role's work. Record provider choice, adapter,
+  and infrastructure reroutes in `run.json` and the coordinator receipt; do not
+  tell an already-dispatched worker to invoke the adapter that launched it.
+  Include nested delegation only when it is itself part of the intended outcome.
 
 ## Fields
 

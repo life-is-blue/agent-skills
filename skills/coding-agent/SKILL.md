@@ -56,6 +56,23 @@ Do not put secrets or internal authentication instructions in the prompt.
 
 ## Start
 
+Use synchronous `run` when the host waits on one tool call or reaps background
+processes after that call returns:
+
+```bash
+SKILL_DIR=/path/to/coding-agent
+
+bash "$SKILL_DIR/scripts/coding-agent-run" run \
+  --agent auto \
+  --workdir /path/to/isolated-worktree \
+  --prompt-file /path/to/prompt.txt \
+  --result-file .verified-dev-loop/run-1/deliveries/round-1.json \
+  --json
+```
+
+`run` returns one terminal envelope. Use asynchronous `start` only when the host
+has verified that detached processes survive between calls:
+
 ```bash
 SKILL_DIR=/path/to/coding-agent
 

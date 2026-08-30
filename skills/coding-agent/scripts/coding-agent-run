@@ -6,6 +6,9 @@ MAX_RESULT_BYTES=1048576
 usage() {
   cat <<'EOF'
 Usage:
+  coding-agent-run run --agent <auto|codex|claude|tclaude|codebuddy|opencode> \
+    --workdir DIR --prompt-file FILE [--state-dir DIR] [--result-file RELATIVE_PATH] \
+    [--unsafe] [--json]
   coding-agent-run start --agent <auto|codex|claude|tclaude|codebuddy|opencode> \
     --workdir DIR --prompt-file FILE [--state-dir DIR] [--result-file RELATIVE_PATH] \
     [--unsafe] [--json]
@@ -260,8 +263,8 @@ PY
 write_completion() {
   local session_dir=$1
   local code=$2
-  printf '%s\n' "$code" >"$session_dir/exit_code"
   date -u +%Y-%m-%dT%H:%M:%SZ >"$session_dir/finished_at"
+  printf '%s\n' "$code" >"$session_dir/exit_code"
 }
 
 run_worker() {
@@ -333,7 +336,9 @@ run_worker() {
   return "$rc"
 }
 
-start_session() {
+launch_session() {
+  local launch_mode=$1
+  shift
   local agent=auto workdir= prompt_file= state_dir= result_file= unsafe=0 json=0
   while (($#)); do
     case "$1" in
@@ -380,6 +385,27 @@ start_session() {
   log_file="$session_dir/output.log"
   : >"$log_file"
 
+  if [[ "$launch_mode" == foreground ]]; then
+    printf '%s\n' "$$" >"$session_dir/pid"
+    local rc status
+    run_worker "$session_dir" "$agent" "$workdir" "$unsafe" \
+      >>"$log_file" 2>&1 </dev/null
+    rc=$?
+    status=$(session_status "$session_dir")
+    if [[ "$json" == 1 ]]; then
+      emit_json "$session_id" "$session_dir" "$status"
+    else
+      printf 'session_id=%s status=%s agent=%s exit_code=%s log=%s\n' \
+        "$session_id" "$status" "$agent" "$rc" "$log_file"
+    fi
+    if [[ "$rc" == 0 ]] && ! result_artifact_valid "$session_dir"; then
+      [[ "$json" == 1 ]] || \
+        printf 'E_RESULT: required result file is missing, invalid, or outside workdir\n' >&2
+      return 2
+    fi
+    return "$rc"
+  fi
+
   self="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
   nohup "$self" _run-worker "$session_dir" "$agent" "$workdir" "$unsafe" \
     >>"$log_file" 2>&1 </dev/null &
@@ -391,6 +417,14 @@ start_session() {
   else
     printf 'session_id=%s agent=%s pid=%s log=%s\n' "$session_id" "$agent" "$pid" "$log_file"
   fi
+}
+
+start_session() {
+  launch_session background "$@"
+}
+
+run_session() {
+  launch_session foreground "$@"
 }
 
 parse_session_options() {
@@ -514,6 +548,7 @@ main() {
   local action=$1
   shift
   case "$action" in
+    run) run_session "$@" ;;
     start) start_session "$@" ;;
     status) show_status "$@" ;;
     log) show_log "$@" ;;

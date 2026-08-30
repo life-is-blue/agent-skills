@@ -23,8 +23,9 @@ length measured from it.
   checks withheld from the implementer were incomplete in 17. In 15 of those
   rounds — roughly half of all rounds — the implementer scored full marks on
   every check it could see and still failed on checks it could not. This is the
-  strongest single result in the corpus and the reason withheld checks are
-  required rather than optional.
+  strongest single result in the corpus and evidence that withheld checks can
+  find defects visible acceptance misses. Because this is one high-risk project,
+  it does not establish that every task needs a withheld check.
 - **What the withheld checks caught** was consistently the gap between a claim
   and its execution: a retry path that computed backoff intervals but never
   waited, a parameter documented as contract-driven but hard-coded, a delivery

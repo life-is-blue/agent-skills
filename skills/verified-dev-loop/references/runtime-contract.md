@@ -98,7 +98,8 @@ checks the revision, diff, files, and commands before starting review. A missing
 or malformed envelope is an infrastructure failure. It is never reconstructed
 from optimistic prose in the log.
 
-The reviewer writes the separate verdict envelope defined in
-[the review contract](review-contract.md). Only after that verdict and the
-controller's own repository gate agree may the controller advance the ledger or
-mark the run complete.
+The reviewer writes the public verdict envelope defined in
+[the review contract](review-contract.md), while full withheld inputs and outputs
+remain in private host state. Only after that verdict and the controller's own
+repository gate agree may the controller advance the ledger or mark the run
+complete.

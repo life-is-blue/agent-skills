@@ -42,6 +42,14 @@ every independent review.
   file, line, or command evidence, the controller resolves the specification
   rather than forcing the implementation to match a disproven expectation.
 
+Keep the full input, expected value, actual value, and command output in private
+host state. The public review envelope records only an opaque check ID, `kind`,
+whether it was required, pass/fail, and an opaque private evidence reference.
+When a failed check must drive a narrow repair, the controller explicitly
+declassifies the minimum expected/actual fact into the blocker and the next task
+contract; that check is open in later rounds. Checks not needed for repair remain
+private, including descriptive names that would reveal what they exercise.
+
 ## Check
 
 1. Inspect the diff and protected paths.
@@ -65,17 +73,20 @@ machine-readable equivalent of:
 {
   "schema_version": 1,
   "role": "reviewer",
-  "verdict": "go",
+  "verdict": "no-go",
   "round_id": "round-1",
   "start_revision": "...",
   "candidate_revision": "...",
   "checks": [
-    {"id": "focused-tests", "kind": "open", "passed": true,
+    {"id": "focused-tests", "kind": "open", "required": true, "passed": true,
      "evidence": "command and result"},
-    {"id": "dropped-value-is-reported", "kind": "withheld", "passed": false,
-     "expected": "...", "actual": "...", "evidence": "command and result"}
+    {"id": "withheld-7f3a", "kind": "withheld", "required": true,
+     "passed": false, "evidence_ref": "private:round-1/check-7f3a"}
   ],
-  "blockers": [],
+  "blockers": [
+    {"check_id": "withheld-7f3a",
+     "summary": "A dropped value is not reported", "declassified": true}
+  ],
   "spec_uncertainties": [],
   "infrastructure_errors": []
 }
@@ -86,10 +97,12 @@ withheld checks were not. Keeping the two countable is what later shows whether
 withheld checks are earning their cost, and a run where they never fail is a
 signal that they were aimed at what the contract already required.
 
-`go` requires non-empty evidence for every required check. A malformed result,
-missing command evidence, unavailable dependency, or sandbox failure is not a
-`no-go` implementation verdict; classify it as infrastructure failure and stop
-or reroute.
+`go` requires every required check to have `passed: true` with non-empty public
+evidence or a resolvable private evidence reference. It also requires empty
+`blockers`, `spec_uncertainties`, and `infrastructure_errors`. A malformed
+result, missing command evidence, unavailable dependency, or sandbox failure is
+not a `no-go` implementation verdict; classify it as infrastructure failure and
+stop or reroute.
 
 The controller independently confirms the repository gate before integration.
 A reviewer verdict never grants permission to merge, push, deploy, or mutate an

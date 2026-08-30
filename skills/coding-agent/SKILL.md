@@ -135,16 +135,23 @@ JSON output has this stable shape:
 Transport `status` is `running`, `stopping`, `completed`, `failed`, `cancelled`,
 or `lost`.
 Artifact status is independently `not-requested`, `pending`, `present`,
-`missing`, `invalid`, or `outside-workdir`. `wait --timeout` leaves the job
-running, sets `wait_timed_out`, and exits 124. When the worker exits zero but a
-required artifact is missing or unsafe, `wait` exits 2 while preserving the
-worker exit code in the envelope.
+`missing`, `invalid`, `outside-workdir`, or `too-large`. `wait --timeout` leaves
+the job running, sets `wait_timed_out`, and exits 124. When the worker exits zero
+but a required artifact is missing or unsafe, `wait` exits 2 while preserving
+the worker exit code in the envelope.
 
 `--result-file` accepts only a relative path inside the worktree. At terminal
 state the runner requires a regular file, rejects symlink escape, and records its
 size and SHA-256. It refuses a path that already exists at dispatch so stale
-output cannot satisfy a new run. It intentionally does not parse or validate the
-contents; the calling protocol owns that schema and acceptance decision.
+output cannot satisfy a new run, and rejects existing parent links that escape
+the real worktree. Result envelopes are limited to 1 MiB and hashed as a stream.
+The runner intentionally does not parse or validate their contents; the calling
+protocol owns that schema and acceptance decision.
+
+`stop` records an explicit cancellation request before signaling the wrapper and
+provider. Until both finish, status remains `stopping`; only a terminal exit 143
+associated with that request becomes `cancelled`. A provider that exits 143 on
+its own is `failed`.
 
 The base text-mode runner needs Bash and ordinary POSIX process tools. `--json`
 and `--result-file` additionally require Python 3 from the host.

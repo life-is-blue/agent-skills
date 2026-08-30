@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 umask 077
+MAX_RESULT_BYTES=1048576
 
 usage() {
   cat <<'EOF'
@@ -62,6 +63,34 @@ validate_result_file() {
   done
 }
 
+validate_result_target() {
+  local workdir=$1 result_file=$2 error
+  error=$(python3 - "$workdir" "$result_file" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+workdir = Path(sys.argv[1]).resolve(strict=True)
+result_file = sys.argv[2]
+candidate = workdir / result_file
+
+if os.path.lexists(candidate):
+    print(f"result file already exists: {result_file}")
+    raise SystemExit(1)
+
+parent = candidate.parent
+while not os.path.lexists(parent):
+    parent = parent.parent
+
+try:
+    parent.resolve(strict=True).relative_to(workdir)
+except (OSError, ValueError):
+    print(f"result file parent resolves outside workdir: {result_file}")
+    raise SystemExit(1)
+PY
+) || die "$error"
+}
+
 select_agent() {
   local requested=$1
   if [[ "$requested" != auto ]]; then
@@ -94,7 +123,11 @@ session_status() {
   fi
   pid=$(<"$session_dir/pid")
   if kill -0 "$pid" 2>/dev/null; then
-    printf 'running'
+    if [[ -f "$session_dir/cancel_requested" ]]; then
+      printf 'stopping'
+    else
+      printf 'running'
+    fi
   else
     printf 'lost'
   fi
@@ -103,14 +136,15 @@ session_status() {
 emit_json() {
   local session_id=$1 session_dir=$2 status=$3 wait_timed_out=${4:-false}
   command -v python3 >/dev/null 2>&1 || die 'python3 is required for --json'
-  python3 - "$session_id" "$session_dir" "$status" "$wait_timed_out" <<'PY'
+  python3 - "$session_id" "$session_dir" "$status" "$wait_timed_out" "$MAX_RESULT_BYTES" <<'PY'
 import hashlib
 import json
 import sys
 from pathlib import Path
 
-session_id, session_dir_text, status, wait_timed_out = sys.argv[1:]
+session_id, session_dir_text, status, wait_timed_out, max_result_bytes_text = sys.argv[1:]
 session_dir = Path(session_dir_text)
+max_result_bytes = int(max_result_bytes_text)
 
 
 def read(name, default=None):
@@ -122,7 +156,12 @@ raw_exit = read("exit_code")
 worker_exit_code = int(raw_exit) if raw_exit is not None else None
 if status == "running" and worker_exit_code is not None:
     status = "completed" if worker_exit_code == 0 else "failed"
-json_status = "cancelled" if status == "failed" and worker_exit_code == 143 else status
+cancel_acknowledged = (session_dir / "cancel_acknowledged").exists()
+json_status = (
+    "cancelled"
+    if status == "failed" and worker_exit_code == 143 and cancel_acknowledged
+    else status
+)
 workdir = Path(read("workdir"))
 result_file = read("result_file")
 artifact = {
@@ -157,12 +196,24 @@ if result_file is not None:
             artifact["status"] = "outside-workdir"
             errors.append({"code": "E_RESULT_OUTSIDE_WORKDIR", "message": "result file resolves outside workdir"})
         else:
-            payload = resolved.read_bytes()
-            artifact.update(
-                status="present",
-                bytes=len(payload),
-                sha256=hashlib.sha256(payload).hexdigest(),
-            )
+            size = resolved.stat().st_size
+            artifact["bytes"] = size
+            if size > max_result_bytes:
+                artifact["status"] = "too-large"
+                errors.append({"code": "E_RESULT_TOO_LARGE", "message": f"result file exceeds {max_result_bytes} bytes"})
+            else:
+                digest = hashlib.sha256()
+                observed = 0
+                with resolved.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(65536), b""):
+                        observed += len(chunk)
+                        if observed > max_result_bytes:
+                            artifact.update(status="too-large", bytes=observed, sha256=None)
+                            errors.append({"code": "E_RESULT_TOO_LARGE", "message": f"result file exceeds {max_result_bytes} bytes"})
+                            break
+                        digest.update(chunk)
+                    else:
+                        artifact.update(status="present", bytes=observed, sha256=digest.hexdigest())
 
 envelope = {
     "schema_version": 1,
@@ -190,13 +241,14 @@ result_artifact_valid() {
   result_file=$(<"$session_dir/result_file")
   workdir=$(<"$session_dir/workdir")
   command -v python3 >/dev/null 2>&1 || return 1
-  python3 - "$workdir" "$result_file" <<'PY'
+  python3 - "$workdir" "$result_file" "$MAX_RESULT_BYTES" <<'PY'
 import sys
 from pathlib import Path
 
 workdir = Path(sys.argv[1]).resolve(strict=True)
 candidate = workdir / sys.argv[2]
-if not candidate.is_file():
+max_result_bytes = int(sys.argv[3])
+if not candidate.is_file() or candidate.stat().st_size > max_result_bytes:
     raise SystemExit(1)
 try:
     candidate.resolve(strict=True).relative_to(workdir)
@@ -219,6 +271,19 @@ run_worker() {
   local unsafe=$4
   local child_pid rc
   local -a command_args
+
+  cancel_worker() {
+    if [[ -f "$session_dir/cancel_requested" ]]; then
+      date -u +%Y-%m-%dT%H:%M:%SZ >"$session_dir/cancel_acknowledged"
+    fi
+    if [[ -n "${child_pid:-}" ]]; then
+      kill "$child_pid" 2>/dev/null || true
+      wait "$child_pid" 2>/dev/null || true
+    fi
+    write_completion "$session_dir" 143
+    exit 143
+  }
+  trap cancel_worker TERM INT
 
   case "$agent" in
     codex)
@@ -262,7 +327,6 @@ run_worker() {
   child_pid=$!
   printf '%s\n' "$child_pid" >"$session_dir/child_pid"
 
-  trap 'kill "$child_pid" 2>/dev/null || true; wait "$child_pid" 2>/dev/null || true; write_completion "$session_dir" 143; exit 143' TERM INT
   wait "$child_pid"
   rc=$?
   write_completion "$session_dir" "$rc"
@@ -295,9 +359,7 @@ start_session() {
 
   workdir=$(absolute_dir "$workdir") || exit $?
   prompt_file=$(absolute_file "$prompt_file") || exit $?
-  if [[ -n "$result_file" && -e "$workdir/$result_file" ]]; then
-    die "result file already exists: $result_file"
-  fi
+  [[ -z "$result_file" ]] || validate_result_target "$workdir" "$result_file"
   agent=$(select_agent "$agent") || exit $?
   if [[ "$unsafe" == 1 && "$agent" == opencode ]]; then
     die '--unsafe is not supported for opencode; verify a provider-specific flag first'
@@ -437,13 +499,13 @@ stop_session() {
     fi
     return 0
   fi
+  date -u +%Y-%m-%dT%H:%M:%SZ >"$SESSION_DIR/cancel_requested"
   pid=$(<"$SESSION_DIR/pid")
   if [[ -f "$SESSION_DIR/child_pid" ]]; then
     child_pid=$(<"$SESSION_DIR/child_pid")
     kill -TERM "$child_pid" 2>/dev/null || true
   fi
   kill -TERM "$pid" 2>/dev/null || true
-  write_completion "$SESSION_DIR" 143
   if [[ "$JSON_OUTPUT" == 1 ]]; then
     emit_json "$SESSION_ID" "$SESSION_DIR" stopping
   else

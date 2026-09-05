@@ -10,10 +10,6 @@
       "distribution": "adapter"
     },
     {
-      "name": "codex-delegate",
-      "distribution": "adapter"
-    },
-    {
       "name": "office-mpp",
       "distribution": "bundled"
     },

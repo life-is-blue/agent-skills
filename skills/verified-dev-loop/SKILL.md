@@ -111,8 +111,8 @@ not:
   a diff.
 
 For provider execution, use a host-provided adapter whose local help and smoke
-behavior have been verified. Compatible hosts may use `coding-agent`,
-`codex-delegate`, or another monitored runner, but none is bundled here. Do not
+behavior have been verified. Compatible hosts may use `coding-agent` or
+another monitored runner, but none is bundled here. Do not
 silently switch providers after an infrastructure failure.
 
 ## Dispatch useful work

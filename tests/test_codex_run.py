@@ -11,7 +11,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNNER = ROOT / "skills" / "codex-delegate" / "scripts" / "codex_run.py"
+RUNNER = ROOT / "skills" / "coding-agent" / "scripts" / "codex_run.py"
 
 
 def load_runner_module():

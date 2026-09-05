@@ -1,21 +1,24 @@
 ---
 name: coding-agent
-description: Delegate substantial coding work to Codex, Claude Code, TClaude, CodeBuddy Code, or OpenCode through a portable monitored background runner. Use for feature implementation, large refactors, code reviews, and long issue-to-PR work; do not use for simple edits, read-only lookup, or tasks that must remain in the current agent thread.
+description: Delegate substantial coding work to Codex, Claude Code, TClaude, CodeBuddy Code, or OpenCode through a portable monitored background runner, with a structured Codex mode that returns a machine-readable result envelope (thread id, touched files, token usage) and supports thread resume and a built-in reviewer. Use for feature implementation, large refactors, code reviews, and long issue-to-PR work; do not use for simple edits, read-only lookup, or tasks that must remain in the current agent thread.
 ---
 
 # Coding Agent
 
 Use the bundled `scripts/coding-agent-run` adapter to launch and monitor coding
-CLIs without depending on OpenClaw.
+CLIs without depending on OpenClaw. For Codex-specific work that needs a
+structured result, use the bundled `scripts/codex_run.py` adapter instead; see
+"Codex structured mode" below.
 
 ## Route
 
 - Honor an explicitly requested provider.
 - With `--agent auto`, select the first installed provider in this order:
   Codex, Claude Code, TClaude, CodeBuddy Code, OpenCode.
-- Use the `codex-delegate` Skill instead when the work is Codex-specific and
-  the caller needs provider event parsing, thread resume, output-schema parsing,
-  or the built-in reviewer. This runner keeps provider output as a plain log.
+- Choose the Codex structured mode (`scripts/codex_run.py`) when the work is
+  Codex-specific and the caller needs provider event parsing, thread resume,
+  output-schema parsing, or the built-in reviewer. The `coding-agent-run`
+  runner keeps provider output as a plain log.
 - Handle simple edits and read-only questions directly.
 - Do not silently switch an explicitly chosen provider after a failure.
   Diagnose first; retry with a relevant change, use an already-authorized
@@ -186,9 +189,33 @@ and `--result-file` additionally require Python 3 from the host.
 6. Never force-push or rewrite an existing/shared branch without explicit
    authorization.
 
+## Codex structured mode
+
+`scripts/codex_run.py` executes the Codex CLI as a monitored job with a stable
+JSON envelope (job id, thread id, touched files, executed commands, token
+usage), thread resume, and an always-read-only built-in reviewer. Use it when a
+calling agent must act on Codex's result programmatically.
+
+```bash
+SKILL_DIR=/path/to/coding-agent
+
+python3 "$SKILL_DIR/scripts/codex_run.py" doctor
+python3 "$SKILL_DIR/scripts/codex_run.py" start \
+  --workdir /path/to/worktree --prompt-file /path/to/prompt.txt \
+  --write --background --timeout 3600 --json
+python3 "$SKILL_DIR/scripts/codex_run.py" wait <job-id> --timeout 900 --json
+python3 "$SKILL_DIR/scripts/codex_run.py" review --workdir /path/to/repo --uncommitted --json
+```
+
+The full operational guide is
+[Codex structured mode](references/codex-structured.md), with the envelope
+schema in [codex-result-contract.md](references/codex-result-contract.md) and
+the verified CLI behavior in [codex-cli.md](references/codex-cli.md).
+
 ## Provider references
 
-- [Codex CLI](references/codex.md)
+- [Codex CLI](references/codex.md) (plain-log runner)
+- [Codex structured mode](references/codex-structured.md)
 - [Claude Code](references/claude-code.md)
 - [TClaude](references/tclaude.md)
 - [CodeBuddy Code](references/codebuddy.md)

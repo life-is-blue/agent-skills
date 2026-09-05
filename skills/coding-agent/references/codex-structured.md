@@ -1,31 +1,27 @@
----
-name: codex-delegate
-description: Delegate a coding, debugging, or review task to the Codex CLI and receive a machine-readable result envelope with thread id, touched files, executed commands, and token usage. Use when another agent must call Codex programmatically, run it in the background, resume a previous Codex thread, or gate on its structured output; do not use for simple edits, read-only lookup, or when a different provider is required.
----
-
-# Codex Delegate
+# Codex structured mode
 
 Run `scripts/codex_run.py` to execute the Codex CLI as a monitored job. Every
 command prints a stable JSON envelope with `--json`, so a calling agent can act
-on the result instead of scraping console text.
+on the result instead of scraping console text. Design informed by
+[openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc),
+implemented as a portable `codex exec --json` adapter.
 
-Use [references/result-contract.md](references/result-contract.md) for the
-envelope fields and exit codes, and
-[references/codex-cli.md](references/codex-cli.md) for the verified CLI
+Use [codex-result-contract.md](codex-result-contract.md) for the envelope
+fields and exit codes, and [codex-cli.md](codex-cli.md) for the verified CLI
 behavior this adapter depends on.
 
-## Route
+## When to use this mode
 
-- Use this Skill for Codex-specific work that needs a structured result,
-  background execution, thread resume, or the built-in reviewer.
-- Use `coding-agent` when the provider may be Claude Code, TClaude, CodeBuddy,
-  or OpenCode, or when a plain streamed log is enough.
+- Codex-specific work that needs a structured result, background execution,
+  thread resume, or the built-in reviewer.
+- Use the plain `coding-agent-run` runner when the provider may be Claude Code,
+  TClaude, CodeBuddy, or OpenCode, or when a plain streamed log is enough.
 - Handle simple edits and read-only questions directly.
 
 ## Preflight
 
 ```bash
-SKILL_DIR=/path/to/codex-delegate
+SKILL_DIR=/path/to/coding-agent
 
 python3 "$SKILL_DIR/scripts/codex_run.py" doctor
 ```
@@ -52,8 +48,8 @@ Put the complete task in a file. State the intended outcome, scope boundaries,
 the worktree and starting SHA, files that must not change, required tests, and
 whether commit, push, or PR is authorized. Do not put secrets in the prompt.
 
-[references/prompting.md](references/prompting.md) has the block structure that
-works best with Codex.
+[codex-prompting.md](codex-prompting.md) has the block structure that works
+best with Codex.
 
 ## Run
 

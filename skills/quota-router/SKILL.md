@@ -13,7 +13,7 @@ Read the matching reference before first use on a host or after a CLI upgrade.
 Never reuse one CLI's parser or refusal-keyword list for another — the
 resemblance between flags is the trap, not a shortcut.
 
-Use `coding-agent` or `codex-delegate` instead when the work is substantial
+Use `coding-agent` instead when the work is substantial
 coding (feature implementation, multi-file refactors, long issue-to-PR work)
 that needs a monitored background runner and a result artifact. This Skill
 covers the lighter, cheaper end of the same spectrum: quick answers, research,
@@ -132,4 +132,4 @@ at all.
 | Quality-first research or final polish | Cursor | Slowest, chosen when output quality matters more than latency. |
 | Safe single-file edit | agy apply flow | agy proposes content; the calling agent reviews and writes it. |
 | Faster single-file edit | Cursor implement | Minimal-trust path, then inspect the diff and independently rerun any requested checks. |
-| Substantial or multi-file coding work | Route to `coding-agent` or `codex-delegate` instead | Out of scope here; those Skills provide a monitored runner with a result envelope. |
+| Substantial or multi-file coding work | Route to `coding-agent` instead | Out of scope here; that Skill provides a monitored runner with a result envelope. |

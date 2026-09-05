@@ -30,6 +30,10 @@
       "distribution": "protocol-only"
     },
     {
+      "name": "quota-router",
+      "distribution": "protocol-only"
+    },
+    {
       "name": "search-docs",
       "distribution": "adapter"
     },

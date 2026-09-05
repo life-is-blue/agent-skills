@@ -35,8 +35,9 @@ and report to the user when it is not ready; do not improvise an auth flow.
 
 Codex requires a Git repository. For a modifying task:
 
-1. Confirm the target repository, canonical remote, target base, and trust of
-   the source ref.
+1. Resolve the target repository, canonical remote, target base, and trust of
+   the source ref from the request and Git state. Ask only about a material
+   ambiguity that inspection cannot settle.
 2. Fetch the base and create an isolated worktree. Never let a background worker
    edit the primary checkout.
 3. Record the start SHA and include it in the prompt.
@@ -109,10 +110,13 @@ them. With no model or effort, Codex uses its own configured defaults.
 Read `status` and `exit_code` first, then `final_message`, `touched_files`, and
 `commands`. Preserve Codex's own verdict, severities, file paths, and line
 numbers when reporting to the user. Never turn a failed Codex run into your own
-implementation attempt; report the failure and stop.
+implementation attempt without first diagnosing the failure. Retry with a
+relevant change or use an already-authorized route when that preserves the
+requested provider and workflow; otherwise report the concrete blocker.
 
-After a review, present the findings and stop. Ask the user which findings to
-fix before editing anything.
+After a review-only request, present the findings without editing. If the user
+also requested fixes, implement the in-scope findings and verify them; ask only
+when a finding requires a material product or scope decision.
 
 ## Safety
 

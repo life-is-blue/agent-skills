@@ -84,8 +84,10 @@ Keep Skill evolution as the default surface. For harness evolution:
    same round.
 2. Declare an exact editable allowlist. Deny changes to the evaluator, data
    loader, split configuration, expected answers, and metric implementation.
-3. Diagnose the full initial train failure distribution and present the first
-   structural proposal for human approval before patching.
+3. Diagnose the full initial train failure distribution. Present the first
+   structural proposal for approval only when it exceeds the experiment's
+   declared editable surface, cost, or risk; otherwise record it in the round
+   receipt and proceed.
 4. Run compilation and a small smoke batch before every full validation gate.
 5. Use isolated subprocesses and Git rollback. Reject any out-of-allowlist diff
    automatically.

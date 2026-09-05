@@ -48,7 +48,9 @@ No clear library? Run cross-library probe:
 search-docs search "QUERY" --limit 8
 ```
 If results span multiple libraries with close scores under the contract's ambiguity gate:
-- Interactive: ask user to clarify.
+- Interactive: ask only when the library choice would materially change the
+  answer; otherwise read the best candidates and answer with the ambiguity
+  disclosed.
 - Non-interactive: return best + second candidate, mark uncertainty.
 
 ### Fallback (once)

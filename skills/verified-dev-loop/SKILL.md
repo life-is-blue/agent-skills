@@ -30,15 +30,16 @@ coordinator's attention.
 ## Set up once per host
 
 Which CLI plays which role is a host fact, not part of the method. On first use
-in an environment, ask the user once, then keep the answer in the host
-environment rather than in this Skill:
+in an environment, inspect installed CLIs and existing host configuration first,
+then keep resolved answers in the host environment rather than in this Skill:
 
 - which CLI coordinates, which implements, and which reviews;
 - which of them may write, commit, or affect anything outside the worktree;
 - which is cheapest and fastest, and which is strongest.
 
-Confirm each answer instead of accepting it: run the CLI's local `--help`
-first, which costs nothing. A minimal smoke on a network-backed CLI can reach
+Verify observable capabilities with the CLI's local `--help`. Ask one
+consolidated question only for unresolved role choices or permissions that
+materially affect the run. A minimal smoke on a network-backed CLI can reach
 the provider and spend real quota before any task has been authorized, so
 disclose that cost and get the user's go-ahead before running it — never run a
 provider-reaching smoke silently during host setup. Read the matching
@@ -60,7 +61,7 @@ should be favored or avoided for a while, take it as a run-time instruction.
 
 ## Establish the run
 
-Collect or confirm:
+Resolve by inspection or collect only when not observable:
 
 - the task, repository, starting revision, scope, and external side effects;
 - the required quality floor and machine-verifiable completion signals;
@@ -71,11 +72,11 @@ numbers, because a command named in a document may not exist, a lint step may be
 a placeholder that always passes, and a stated capability may not match the
 installed one. Anything a measurement can settle is not a question for the user.
 
-What measurement cannot settle is usually a judgment call: a direction tradeoff,
-how strict acceptance should be, how much risk is acceptable. Ask about those
-while the user is present, giving each question a short set of options and a
-recommendation. Consolidate them into one round by default, but ask again when
-new evidence exposes a decision or invalidates an earlier assumption.
+For judgment calls, use a safe reversible default when it preserves the stated
+quality floor and scope. Ask about direction, acceptance strictness, or risk only
+when the alternatives would materially change the outcome. Consolidate required
+questions into one round, and ask again only when new evidence invalidates the
+authorization or assumption being relied on.
 
 Otherwise decide, and disclose. List every call made on the user's behalf in one
 labeled section of the contract, and mark anything unverified as an assumption.
@@ -120,9 +121,11 @@ For implementation or substantial investigation, write a frozen task contract
 using [the task contract](references/task-contract.md). Give each worker only the
 context needed for its role.
 
-Across a multi-round run, keep the invariants, the remaining plan, and the
-contracts themselves in the repository rather than in each prompt, and open every
-dispatch with a read-back of them. Read
+Across a run that must survive context loss, process restart, or handoff, keep
+the invariants, remaining work, and contracts in the repository rather than in
+each prompt, and open every dispatch with a read-back of them. Do not create
+durable run-state files for a short run that can complete in the current
+session. Read
 [durable state between rounds](references/durable-state.md). A contract is
 bounded while the invariants accumulate, so restating them each round costs more
 of that bound and leaves the selection unchecked in the coordinator's context.

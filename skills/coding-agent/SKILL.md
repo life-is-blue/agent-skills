@@ -17,8 +17,9 @@ CLIs without depending on OpenClaw.
   the caller needs provider event parsing, thread resume, output-schema parsing,
   or the built-in reviewer. This runner keeps provider output as a plain log.
 - Handle simple edits and read-only questions directly.
-- Do not silently switch providers after a failure. Report the failure and
-  retry or ask.
+- Do not silently switch an explicitly chosen provider after a failure.
+  Diagnose first; retry with a relevant change, use an already-authorized
+  fallback, or report the concrete blocker.
 
 Read the matching provider reference before first use on a host or after a CLI
 upgrade.
@@ -27,8 +28,9 @@ upgrade.
 
 For a modifying task in Git:
 
-1. Confirm the target repository, canonical remote, target base, and trust of
-   the source ref.
+1. Resolve the target repository, canonical remote, target base, and trust of
+   the source ref from the request and Git state. Ask only about a material
+   ambiguity that inspection cannot settle.
 2. Use the repository's approved sandbox for untrusted contributor refs.
 3. For trusted work, fetch the base and create an isolated worktree. Never edit
    the primary checkout through a background worker.

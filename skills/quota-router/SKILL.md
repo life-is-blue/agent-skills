@@ -110,8 +110,9 @@ at all.
   a real turn.
 - Do not ask agy to write a user file directly; its write tool is confined to
   its own artifact directory. Ask it to return the complete replacement
-  content, show that to the user, and let the calling agent write it after the
-  workspace is confirmed trusted.
+  content, then let the calling agent review and write it when the original
+  request already authorizes that edit and the workspace is trusted. Ask again
+  only if the proposed content expands scope or introduces a gated effect.
 - For Cursor edits, default to the minimal `--trust` path rather than
   `--force` or `--yolo`, then inspect the actual diff. If the task requires
   running commands or tests, rerun them yourself — `--trust` can allow file

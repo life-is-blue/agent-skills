@@ -57,8 +57,10 @@ the changed content rather than modify files, the default permission tier
 returns `status:"SUCCESS"` with the complete, correct modified file content in
 `response`, and the original file is untouched (`read_file` is
 auto-allowed inside a trusted workspace, so no flag is needed). The calling
-agent must show that content to the user and write it only after the user
-confirms — the markdown-fence format of the response is not guaranteed
+agent must review that content and may write it when the original request
+already authorizes the edit and the workspace is trusted; a second confirmation
+is needed only for expanded scope or another gated effect. The markdown-fence
+format of the response is not guaranteed
 stable and this Skill does not parse it.
 
 ## Resume

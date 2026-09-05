@@ -38,6 +38,10 @@
       "distribution": "protocol-only"
     },
     {
+      "name": "verified-dev-loop",
+      "distribution": "protocol-only"
+    },
+    {
       "name": "wechat-publish",
       "distribution": "protocol-only"
     }

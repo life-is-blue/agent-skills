@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 set -uo pipefail
 umask 077
+MAX_RESULT_BYTES=1048576
 
 usage() {
   cat <<'EOF'
 Usage:
+  coding-agent-run run --agent <auto|codex|claude|tclaude|codebuddy|opencode> \
+    --workdir DIR --prompt-file FILE [--state-dir DIR] [--result-file RELATIVE_PATH] \
+    [--unsafe] [--json]
   coding-agent-run start --agent <auto|codex|claude|tclaude|codebuddy|opencode> \
-    --workdir DIR --prompt-file FILE [--state-dir DIR] [--unsafe]
-  coding-agent-run status SESSION [--state-dir DIR]
+    --workdir DIR --prompt-file FILE [--state-dir DIR] [--result-file RELATIVE_PATH] \
+    [--unsafe] [--json]
+  coding-agent-run status SESSION [--state-dir DIR] [--json]
   coding-agent-run log SESSION [--state-dir DIR]
-  coding-agent-run wait SESSION [--state-dir DIR] [--timeout SECONDS]
-  coding-agent-run stop SESSION [--state-dir DIR]
+  coding-agent-run wait SESSION [--state-dir DIR] [--timeout SECONDS] [--json]
+  coding-agent-run stop SESSION [--state-dir DIR] [--json]
 EOF
 }
 
@@ -50,6 +55,45 @@ validate_session_id() {
   [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || die "invalid session ID: $1"
 }
 
+validate_result_file() {
+  local value=$1 part
+  local -a parts
+  [[ -n "$value" && "$value" != /* ]] || die '--result-file must be a relative path'
+  IFS='/' read -r -a parts <<<"$value"
+  for part in "${parts[@]}"; do
+    [[ -n "$part" && "$part" != . && "$part" != .. ]] || \
+      die '--result-file must stay inside the workdir'
+  done
+}
+
+validate_result_target() {
+  local workdir=$1 result_file=$2 error
+  error=$(python3 - "$workdir" "$result_file" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+workdir = Path(sys.argv[1]).resolve(strict=True)
+result_file = sys.argv[2]
+candidate = workdir / result_file
+
+if os.path.lexists(candidate):
+    print(f"result file already exists: {result_file}")
+    raise SystemExit(1)
+
+parent = candidate.parent
+while not os.path.lexists(parent):
+    parent = parent.parent
+
+try:
+    parent.resolve(strict=True).relative_to(workdir)
+except (OSError, ValueError):
+    print(f"result file parent resolves outside workdir: {result_file}")
+    raise SystemExit(1)
+PY
+) || die "$error"
+}
+
 select_agent() {
   local requested=$1
   if [[ "$requested" != auto ]]; then
@@ -82,17 +126,145 @@ session_status() {
   fi
   pid=$(<"$session_dir/pid")
   if kill -0 "$pid" 2>/dev/null; then
-    printf 'running'
+    if [[ -f "$session_dir/cancel_requested" ]]; then
+      printf 'stopping'
+    else
+      printf 'running'
+    fi
   else
     printf 'lost'
   fi
 }
 
+emit_json() {
+  local session_id=$1 session_dir=$2 status=$3 wait_timed_out=${4:-false}
+  command -v python3 >/dev/null 2>&1 || die 'python3 is required for --json'
+  python3 - "$session_id" "$session_dir" "$status" "$wait_timed_out" "$MAX_RESULT_BYTES" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+session_id, session_dir_text, status, wait_timed_out, max_result_bytes_text = sys.argv[1:]
+session_dir = Path(session_dir_text)
+max_result_bytes = int(max_result_bytes_text)
+
+
+def read(name, default=None):
+    path = session_dir / name
+    return path.read_text(encoding="utf-8").strip() if path.exists() else default
+
+
+raw_exit = read("exit_code")
+worker_exit_code = int(raw_exit) if raw_exit is not None else None
+if status == "running" and worker_exit_code is not None:
+    status = "completed" if worker_exit_code == 0 else "failed"
+cancel_acknowledged = (session_dir / "cancel_acknowledged").exists()
+json_status = (
+    "cancelled"
+    if status == "failed" and worker_exit_code == 143 and cancel_acknowledged
+    else status
+)
+workdir = Path(read("workdir"))
+result_file = read("result_file")
+artifact = {
+    "required": result_file is not None,
+    "path": str(workdir / result_file) if result_file is not None else None,
+    "status": "not-requested",
+    "bytes": None,
+    "sha256": None,
+}
+errors = []
+
+if json_status == "lost":
+    errors.append({"code": "E_WORKER_LOST", "message": "worker exited without a terminal record"})
+elif json_status == "failed":
+    errors.append({"code": "E_WORKER_FAILED", "message": "worker exited non-zero"})
+
+if result_file is not None:
+    candidate = workdir / result_file
+    if json_status in {"running", "stopping"}:
+        artifact["status"] = "pending"
+    elif not candidate.exists():
+        artifact["status"] = "missing"
+        errors.append({"code": "E_RESULT_MISSING", "message": "required result file is missing"})
+    elif not candidate.is_file():
+        artifact["status"] = "invalid"
+        errors.append({"code": "E_RESULT_INVALID", "message": "result path is not a regular file"})
+    else:
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(workdir.resolve(strict=True))
+        except (OSError, ValueError):
+            artifact["status"] = "outside-workdir"
+            errors.append({"code": "E_RESULT_OUTSIDE_WORKDIR", "message": "result file resolves outside workdir"})
+        else:
+            size = resolved.stat().st_size
+            artifact["bytes"] = size
+            if size > max_result_bytes:
+                artifact["status"] = "too-large"
+                errors.append({"code": "E_RESULT_TOO_LARGE", "message": f"result file exceeds {max_result_bytes} bytes"})
+            else:
+                digest = hashlib.sha256()
+                observed = 0
+                with resolved.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(65536), b""):
+                        observed += len(chunk)
+                        if observed > max_result_bytes:
+                            artifact.update(status="too-large", bytes=observed, sha256=None)
+                            errors.append({"code": "E_RESULT_TOO_LARGE", "message": f"result file exceeds {max_result_bytes} bytes"})
+                            break
+                        digest.update(chunk)
+                    else:
+                        artifact.update(status="present", bytes=observed, sha256=digest.hexdigest())
+
+envelope = {
+    "schema_version": 1,
+    "session_id": session_id,
+    "status": json_status,
+    "agent": read("agent"),
+    "pid": int(read("pid")) if read("pid") else None,
+    "workdir": str(workdir),
+    "unsafe": read("unsafe") == "1",
+    "worker_exit_code": worker_exit_code,
+    "started_at": read("started_at"),
+    "finished_at": read("finished_at"),
+    "log_file": str(session_dir / "output.log"),
+    "result_artifact": artifact,
+    "wait_timed_out": wait_timed_out == "true",
+    "errors": errors,
+}
+print(json.dumps(envelope, ensure_ascii=False, separators=(",", ":")))
+PY
+}
+
+result_artifact_valid() {
+  local session_dir=$1 result_file workdir
+  [[ -f "$session_dir/result_file" ]] || return 0
+  result_file=$(<"$session_dir/result_file")
+  workdir=$(<"$session_dir/workdir")
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - "$workdir" "$result_file" "$MAX_RESULT_BYTES" <<'PY'
+import sys
+from pathlib import Path
+
+workdir = Path(sys.argv[1]).resolve(strict=True)
+candidate = workdir / sys.argv[2]
+max_result_bytes = int(sys.argv[3])
+if not candidate.is_file() or candidate.stat().st_size > max_result_bytes:
+    raise SystemExit(1)
+try:
+    candidate.resolve(strict=True).relative_to(workdir)
+except (OSError, ValueError):
+    raise SystemExit(1)
+PY
+}
+
 write_completion() {
   local session_dir=$1
   local code=$2
-  printf '%s\n' "$code" >"$session_dir/exit_code"
   date -u +%Y-%m-%dT%H:%M:%SZ >"$session_dir/finished_at"
+  printf '%s\n' "$code" >"$session_dir/exit_code"
 }
 
 run_worker() {
@@ -102,6 +274,19 @@ run_worker() {
   local unsafe=$4
   local child_pid rc
   local -a command_args
+
+  cancel_worker() {
+    if [[ -f "$session_dir/cancel_requested" ]]; then
+      date -u +%Y-%m-%dT%H:%M:%SZ >"$session_dir/cancel_acknowledged"
+    fi
+    if [[ -n "${child_pid:-}" ]]; then
+      kill "$child_pid" 2>/dev/null || true
+      wait "$child_pid" 2>/dev/null || true
+    fi
+    write_completion "$session_dir" 143
+    exit 143
+  }
+  trap cancel_worker TERM INT
 
   case "$agent" in
     codex)
@@ -145,22 +330,25 @@ run_worker() {
   child_pid=$!
   printf '%s\n' "$child_pid" >"$session_dir/child_pid"
 
-  trap 'kill "$child_pid" 2>/dev/null || true; wait "$child_pid" 2>/dev/null || true; write_completion "$session_dir" 143; exit 143' TERM INT
   wait "$child_pid"
   rc=$?
   write_completion "$session_dir" "$rc"
   return "$rc"
 }
 
-start_session() {
-  local agent=auto workdir= prompt_file= state_dir= unsafe=0
+launch_session() {
+  local launch_mode=$1
+  shift
+  local agent=auto workdir= prompt_file= state_dir= result_file= unsafe=0 json=0
   while (($#)); do
     case "$1" in
       --agent) [[ $# -ge 2 ]] || die '--agent requires a value'; agent=$2; shift 2 ;;
       --workdir) [[ $# -ge 2 ]] || die '--workdir requires a value'; workdir=$2; shift 2 ;;
       --prompt-file) [[ $# -ge 2 ]] || die '--prompt-file requires a value'; prompt_file=$2; shift 2 ;;
       --state-dir) [[ $# -ge 2 ]] || die '--state-dir requires a value'; state_dir=$2; shift 2 ;;
+      --result-file) [[ $# -ge 2 ]] || die '--result-file requires a value'; result_file=$2; shift 2 ;;
       --unsafe) unsafe=1; shift ;;
+      --json) json=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "unknown start option: $1" ;;
     esac
@@ -168,10 +356,15 @@ start_session() {
 
   [[ -n "$workdir" ]] || die '--workdir is required'
   [[ -n "$prompt_file" ]] || die '--prompt-file is required'
+  [[ -z "$result_file" ]] || validate_result_file "$result_file"
+  if [[ "$json" == 1 || -n "$result_file" ]]; then
+    command -v python3 >/dev/null 2>&1 || die 'python3 is required for --json and --result-file'
+  fi
   case "$agent" in auto|codex|claude|tclaude|codebuddy|opencode) ;; *) die "unsupported provider: $agent" ;; esac
 
   workdir=$(absolute_dir "$workdir") || exit $?
   prompt_file=$(absolute_file "$prompt_file") || exit $?
+  [[ -z "$result_file" ]] || validate_result_target "$workdir" "$result_file"
   agent=$(select_agent "$agent") || exit $?
   if [[ "$unsafe" == 1 && "$agent" == opencode ]]; then
     die '--unsafe is not supported for opencode; verify a provider-specific flag first'
@@ -187,9 +380,31 @@ start_session() {
   printf '%s\n' "$agent" >"$session_dir/agent"
   printf '%s\n' "$workdir" >"$session_dir/workdir"
   printf '%s\n' "$unsafe" >"$session_dir/unsafe"
+  [[ -z "$result_file" ]] || printf '%s\n' "$result_file" >"$session_dir/result_file"
   date -u +%Y-%m-%dT%H:%M:%SZ >"$session_dir/started_at"
   log_file="$session_dir/output.log"
   : >"$log_file"
+
+  if [[ "$launch_mode" == foreground ]]; then
+    printf '%s\n' "$$" >"$session_dir/pid"
+    local rc status
+    run_worker "$session_dir" "$agent" "$workdir" "$unsafe" \
+      >>"$log_file" 2>&1 </dev/null
+    rc=$?
+    status=$(session_status "$session_dir")
+    if [[ "$json" == 1 ]]; then
+      emit_json "$session_id" "$session_dir" "$status"
+    else
+      printf 'session_id=%s status=%s agent=%s exit_code=%s log=%s\n' \
+        "$session_id" "$status" "$agent" "$rc" "$log_file"
+    fi
+    if [[ "$rc" == 0 ]] && ! result_artifact_valid "$session_dir"; then
+      [[ "$json" == 1 ]] || \
+        printf 'E_RESULT: required result file is missing, invalid, or outside workdir\n' >&2
+      return 2
+    fi
+    return "$rc"
+  fi
 
   self="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
   nohup "$self" _run-worker "$session_dir" "$agent" "$workdir" "$unsafe" \
@@ -197,13 +412,26 @@ start_session() {
   pid=$!
   printf '%s\n' "$pid" >"$session_dir/pid"
 
-  printf 'session_id=%s agent=%s pid=%s log=%s\n' "$session_id" "$agent" "$pid" "$log_file"
+  if [[ "$json" == 1 ]]; then
+    emit_json "$session_id" "$session_dir" running
+  else
+    printf 'session_id=%s agent=%s pid=%s log=%s\n' "$session_id" "$agent" "$pid" "$log_file"
+  fi
+}
+
+start_session() {
+  launch_session background "$@"
+}
+
+run_session() {
+  launch_session foreground "$@"
 }
 
 parse_session_options() {
   SESSION_ID=
   STATE_DIR=
   TIMEOUT=
+  JSON_OUTPUT=0
   [[ $# -ge 1 ]] || die 'session ID is required'
   SESSION_ID=$1
   validate_session_id "$SESSION_ID"
@@ -212,6 +440,7 @@ parse_session_options() {
     case "$1" in
       --state-dir) [[ $# -ge 2 ]] || die '--state-dir requires a value'; STATE_DIR=$2; shift 2 ;;
       --timeout) [[ $# -ge 2 ]] || die '--timeout requires a value'; TIMEOUT=$2; shift 2 ;;
+      --json) JSON_OUTPUT=1; shift ;;
       *) die "unknown option: $1" ;;
     esac
   done
@@ -228,12 +457,17 @@ show_status() {
   pid=$(<"$SESSION_DIR/pid")
   agent=$(<"$SESSION_DIR/agent")
   [[ -f "$SESSION_DIR/exit_code" ]] && exit_part=" exit_code=$(<"$SESSION_DIR/exit_code")"
-  printf 'session_id=%s status=%s agent=%s pid=%s%s\n' "$SESSION_ID" "$status" "$agent" "$pid" "$exit_part"
+  if [[ "$JSON_OUTPUT" == 1 ]]; then
+    emit_json "$SESSION_ID" "$SESSION_DIR" "$status"
+  else
+    printf 'session_id=%s status=%s agent=%s pid=%s%s\n' "$SESSION_ID" "$status" "$agent" "$pid" "$exit_part"
+  fi
 }
 
 show_log() {
   parse_session_options "$@"
   [[ -z "$TIMEOUT" ]] || die '--timeout is only valid with wait'
+  [[ "$JSON_OUTPUT" == 0 ]] || die '--json is not supported with log'
   cat "$SESSION_DIR/output.log"
 }
 
@@ -249,18 +483,36 @@ wait_session() {
     case "$status" in
       completed|failed)
         code=$(<"$SESSION_DIR/exit_code")
-        printf 'session_id=%s status=%s exit_code=%s\n' "$SESSION_ID" "$status" "$code"
+        if [[ "$JSON_OUTPUT" == 1 ]]; then
+          emit_json "$SESSION_ID" "$SESSION_DIR" "$status"
+        else
+          printf 'session_id=%s status=%s exit_code=%s\n' "$SESSION_ID" "$status" "$code"
+        fi
+        if [[ "$code" == 0 ]] && ! result_artifact_valid "$SESSION_DIR"; then
+          if [[ "$JSON_OUTPUT" == 0 ]]; then
+            printf 'E_RESULT: required result file is missing, invalid, or outside workdir\n' >&2
+          fi
+          return 2
+        fi
         return "$code"
         ;;
       lost)
-        printf 'session_id=%s status=lost\n' "$SESSION_ID" >&2
+        if [[ "$JSON_OUTPUT" == 1 ]]; then
+          emit_json "$SESSION_ID" "$SESSION_DIR" lost
+        else
+          printf 'session_id=%s status=lost\n' "$SESSION_ID" >&2
+        fi
         return 1
         ;;
     esac
     if [[ -n "$TIMEOUT" ]]; then
       now=$(date +%s)
       if ((now - start >= TIMEOUT)); then
-        printf 'session_id=%s status=timeout\n' "$SESSION_ID" >&2
+        if [[ "$JSON_OUTPUT" == 1 ]]; then
+          emit_json "$SESSION_ID" "$SESSION_DIR" "$status" true
+        else
+          printf 'session_id=%s status=timeout\n' "$SESSION_ID" >&2
+        fi
         return 124
       fi
     fi
@@ -271,20 +523,24 @@ wait_session() {
 stop_session() {
   parse_session_options "$@"
   [[ -z "$TIMEOUT" ]] || die '--timeout is only valid with wait'
-  local status pid child_pid
+  local status pid
   status=$(session_status "$SESSION_DIR")
   if [[ "$status" != running ]]; then
-    printf 'session_id=%s status=%s\n' "$SESSION_ID" "$status"
+    if [[ "$JSON_OUTPUT" == 1 ]]; then
+      emit_json "$SESSION_ID" "$SESSION_DIR" "$status"
+    else
+      printf 'session_id=%s status=%s\n' "$SESSION_ID" "$status"
+    fi
     return 0
   fi
+  date -u +%Y-%m-%dT%H:%M:%SZ >"$SESSION_DIR/cancel_requested"
   pid=$(<"$SESSION_DIR/pid")
-  if [[ -f "$SESSION_DIR/child_pid" ]]; then
-    child_pid=$(<"$SESSION_DIR/child_pid")
-    kill -TERM "$child_pid" 2>/dev/null || true
-  fi
   kill -TERM "$pid" 2>/dev/null || true
-  write_completion "$SESSION_DIR" 143
-  printf 'session_id=%s status=stopping\n' "$SESSION_ID"
+  if [[ "$JSON_OUTPUT" == 1 ]]; then
+    emit_json "$SESSION_ID" "$SESSION_DIR" stopping
+  else
+    printf 'session_id=%s status=stopping\n' "$SESSION_ID"
+  fi
 }
 
 main() {
@@ -292,6 +548,7 @@ main() {
   local action=$1
   shift
   case "$action" in
+    run) run_session "$@" ;;
     start) start_session "$@" ;;
     status) show_status "$@" ;;
     log) show_log "$@" ;;

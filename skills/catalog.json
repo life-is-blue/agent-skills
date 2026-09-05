@@ -14,10 +14,6 @@
       "distribution": "adapter"
     },
     {
-      "name": "gemini-frontend",
-      "distribution": "adapter"
-    },
-    {
       "name": "office-mpp",
       "distribution": "bundled"
     },

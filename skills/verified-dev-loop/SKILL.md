@@ -37,11 +37,17 @@ environment rather than in this Skill:
 - which of them may write, commit, or affect anything outside the worktree;
 - which is cheapest and fastest, and which is strongest.
 
-Confirm each answer instead of accepting it: run the CLI's local `--help` and one
-minimal smoke, because a documented capability and the installed behavior diverge
-often enough to matter. Read the matching provider reference in the
-`coding-agent` Skill for per-CLI facts rather than restating them here, and
-re-confirm after a CLI upgrade.
+Confirm each answer instead of accepting it: run the CLI's local `--help`
+first, which costs nothing. A minimal smoke on a network-backed CLI can reach
+the provider and spend real quota before any task has been authorized, so
+disclose that cost and get the user's go-ahead before running it — never run a
+provider-reaching smoke silently during host setup. Read the matching
+provider reference in the `coding-agent` Skill for per-CLI facts rather than
+restating them here, and re-confirm after a CLI upgrade. This Skill depends on
+those provider references: a standalone install must copy the `coding-agent`
+Skill directory alongside this one. When the transport is a different
+monitored runner with no matching reference here, fall back to that runner's
+own local `--help` and documentation instead of skipping the confirmation.
 
 Confirm that the selected transport can dispatch an exact contract, preserve the
 chosen workspace and permissions, report terminal state, expose logs and the

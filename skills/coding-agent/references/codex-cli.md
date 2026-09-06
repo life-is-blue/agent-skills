@@ -1,9 +1,14 @@
 # Codex CLI behavior
 
-Verified locally on 2026-07-26 with `codex-cli 0.145.0`. Re-verify with
+Verified locally on 2026-07-26 with `codex-cli 0.145.0` (the plain-log runner
+invocation was verified on 2026-07-19 with 0.144.6). Re-verify with
 `codex --help`, `codex exec --help`, `codex exec resume --help`, and
 `codex exec review --help` after a CLI upgrade; argument placement is
 version-sensitive.
+
+This note covers both Codex adapters in this Skill: the `codex_run.py`
+structured adapter and the Codex provider of the `coding-agent-run` plain-log
+runner.
 
 ## Global options carry the run policy
 
@@ -41,6 +46,23 @@ length and quoting limits. The adapter always supplies stdin explicitly
 positional open, so a `-` prompt marker would be parsed as the session id.
 The adapter resolves the newest thread id from its own job records and passes
 it explicitly.
+
+## Plain-log runner invocation (coding-agent-run)
+
+The plain-log runner sends the prompt on stdin to:
+
+```bash
+codex --ask-for-approval never exec --sandbox workspace-write -
+```
+
+With explicit `--unsafe`, it instead uses:
+
+```bash
+codex exec --dangerously-bypass-approvals-and-sandbox -
+```
+
+Useful native alternatives include `codex exec review` and `codex exec resume`,
+but the portable runner starts a fresh non-interactive execution.
 
 ## Event stream
 

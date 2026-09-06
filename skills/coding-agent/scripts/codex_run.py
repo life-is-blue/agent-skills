@@ -15,7 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA_VERSION = 1
-STATE_DIR_ENV = "CODEX_DELEGATE_STATE_DIR"
+STATE_DIR_ENV = "CODEX_RUN_STATE_DIR"
+LEGACY_STATE_DIR_ENV = "CODEX_DELEGATE_STATE_DIR"
 TERMINAL_STATUSES = {"completed", "failed", "cancelled", "timeout"}
 
 EXIT_OK = 0
@@ -34,18 +35,26 @@ def now_iso() -> str:
 
 
 def default_state_dir() -> Path:
-    explicit = os.environ.get(STATE_DIR_ENV)
+    explicit = os.environ.get(STATE_DIR_ENV) or os.environ.get(
+        LEGACY_STATE_DIR_ENV
+    )
     if explicit:
         return Path(explicit)
     xdg = os.environ.get("XDG_STATE_HOME")
     if xdg:
-        return Path(xdg) / "codex-delegate"
-    home = os.environ.get("HOME")
-    if not home:
-        raise InputError(
-            f"set --state-dir, {STATE_DIR_ENV}, XDG_STATE_HOME, or HOME"
-        )
-    return Path(home) / ".local" / "state" / "codex-delegate"
+        base = Path(xdg)
+    else:
+        home = os.environ.get("HOME")
+        if not home:
+            raise InputError(
+                f"set --state-dir, {STATE_DIR_ENV}, XDG_STATE_HOME, or HOME"
+            )
+        base = Path(home) / ".local" / "state"
+    # Jobs written before the codex-delegate merge keep their resume data.
+    legacy = base / "codex-delegate"
+    if legacy.is_dir():
+        return legacy
+    return base / "codex-run"
 
 
 def resolve_state_dir(value: str | None) -> Path:

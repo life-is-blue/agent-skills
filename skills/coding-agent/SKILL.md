@@ -5,10 +5,18 @@ description: Delegate substantial coding work to Codex, Claude Code, TClaude, Co
 
 # Coding Agent
 
-Use the bundled `scripts/coding-agent-run` adapter to launch and monitor coding
-CLIs without depending on OpenClaw. For Codex-specific work that needs a
-structured result, use the bundled `scripts/codex_run.py` adapter instead; see
-"Codex structured mode" below.
+This Skill bundles two adapters:
+
+- `scripts/coding-agent-run` — the plain-log runner. Launches and monitors any
+  supported coding CLI (Codex, Claude Code, TClaude, CodeBuddy Code, OpenCode)
+  and keeps provider output as a plain log. Its sessions, commands, and
+  transport envelope are documented in the sections marked *(plain-log
+  runner)*.
+- `scripts/codex_run.py` — the Codex structured mode. Codex-only; returns a
+  machine-readable result envelope instead of a log. See the section marked
+  *(structured mode)*.
+
+The workspace, prompt, and verification sections apply to both adapters.
 
 ## Route
 
@@ -17,8 +25,8 @@ structured result, use the bundled `scripts/codex_run.py` adapter instead; see
   Codex, Claude Code, TClaude, CodeBuddy Code, OpenCode.
 - Choose the Codex structured mode (`scripts/codex_run.py`) when the work is
   Codex-specific and the caller needs provider event parsing, thread resume,
-  output-schema parsing, or the built-in reviewer. The `coding-agent-run`
-  runner keeps provider output as a plain log.
+  output-schema parsing, or the built-in reviewer. For everything else, use the
+  plain-log runner (`scripts/coding-agent-run`).
 - Handle simple edits and read-only questions directly.
 - Do not silently switch an explicitly chosen provider after a failure.
   Diagnose first; retry with a relevant change, use an already-authorized
@@ -59,7 +67,7 @@ an artifact; it does not infer a result by parsing provider prose.
 
 Do not put secrets or internal authentication instructions in the prompt.
 
-## Start
+## Start (plain-log runner)
 
 Use synchronous `run` when the host waits on one tool call or reaps background
 processes after that call returns:
@@ -106,7 +114,7 @@ bash "$SKILL_DIR/scripts/coding-agent-run" start \
   --unsafe
 ```
 
-## Monitor
+## Monitor (plain-log runner)
 
 ```bash
 bash "$SKILL_DIR/scripts/coding-agent-run" status <session>
@@ -125,7 +133,7 @@ store. Otherwise the runner uses `$XDG_STATE_HOME/coding-agent` or
 Update the user after launch with the session ID and worktree. During execution,
 report only milestones, questions, failures, user action, and completion.
 
-## Transport envelope and result artifact
+## Transport envelope and result artifact (plain-log runner)
 
 JSON output has this stable shape:
 
@@ -189,7 +197,7 @@ and `--result-file` additionally require Python 3 from the host.
 6. Never force-push or rewrite an existing/shared branch without explicit
    authorization.
 
-## Codex structured mode
+## Codex structured mode (codex_run.py)
 
 `scripts/codex_run.py` executes the Codex CLI as a monitored job with a stable
 JSON envelope (job id, thread id, touched files, executed commands, token
@@ -214,8 +222,10 @@ the verified CLI behavior in [codex-cli.md](references/codex-cli.md).
 
 ## Provider references
 
-- [Codex CLI](references/codex.md) (plain-log runner)
-- [Codex structured mode](references/codex-structured.md)
+- [Codex CLI behavior](references/codex-cli.md) — verified flags and event
+  stream for both Codex adapters
+- [Codex structured mode](references/codex-structured.md) — operations guide
+  for `codex_run.py`
 - [Claude Code](references/claude-code.md)
 - [TClaude](references/tclaude.md)
 - [CodeBuddy Code](references/codebuddy.md)

@@ -120,9 +120,11 @@ when a finding requires a material product or scope decision.
 - `--write` maps to `-s workspace-write -a never`.
 - `--unsafe` maps to `--dangerously-bypass-approvals-and-sandbox`. Pass it only
   with explicit user authorization in a trusted, externally sandboxed worktree.
-- Session state lives under `--state-dir`, `CODEX_DELEGATE_STATE_DIR`,
-  `$XDG_STATE_HOME/codex-delegate`, or `~/.local/state/codex-delegate`. It holds
-  the prompt, the raw event stream, and Codex stderr; treat it as sensitive.
+- Session state lives under `--state-dir`, `CODEX_RUN_STATE_DIR`,
+  `$XDG_STATE_HOME/codex-run`, or `~/.local/state/codex-run`. The legacy
+  `CODEX_DELEGATE_STATE_DIR` variable and `codex-delegate` directory from
+  before the skill merge are honored when present. State holds the prompt, the
+  raw event stream, and Codex stderr; treat it as sensitive.
 
 ## Verify
 

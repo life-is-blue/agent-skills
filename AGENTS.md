@@ -1,5 +1,12 @@
 # AGENTS.md
 
+## Precedence
+
+Explicit user instruction > this file > a skill's SKILL.md > its references.
+A skill-level rule specializes a general rule within its scope; it never
+silently contradicts it. If two rules appear to conflict, apply the more
+specific one and make the chosen reading visible in the handoff.
+
 ## Workflow
 
 1. Read the relevant `skills/<name>/SKILL.md` and only the references routed for
@@ -20,30 +27,42 @@ change history; repository documents describe current behavior.
   reads, edits, and verification needed to complete it. Do not ask for approval
   already conveyed by that request.
 - Resolve repository paths, current revision, tool availability, and other
-  observable facts by inspection. Make reversible implementation choices when
-  they do not materially change scope, and state important assumptions in the
-  handoff.
-- Ask one consolidated clarification only when a missing choice would
-  materially change the outcome, create an irreversible or external effect, or
-  require credentials, spending, permission bypass, or scope expansion. Do not
-  turn a recommendation or a request for confirmation into a prerequisite when
-  a safe default exists.
+  observable facts by inspection. Anything a measurement can settle is not a
+  question. Make reversible implementation choices when they do not materially
+  change scope, and state important assumptions in the handoff.
+- Ask exactly one consolidated clarification when a missing choice would
+  materially change the outcome AND inspection cannot settle it. Skills may
+  specialize the question format per tier (frontier interview for vague
+  direction, optioned questions before dispatch); this rule is the fallback
+  when no tier applies.
+- Gated effects require explicit scope: commit, push, PR creation, publishing,
+  deployment, deletion, writes outside the requested workspace, credentials,
+  provider spending, permission bypass. One request naming several gated
+  effects satisfies all of them — list every effect once, together, immediately
+  before executing; do not confirm each separately. Authorization for one does
+  not extend to effects not named.
 - A request to create, fix, update, or optimize includes implementation and
   verification. A request to review, explain, or diagnose is read-only unless
-  it also asks for fixes. Commit, push, PR creation, publishing, deployment,
-  deletion, and writes outside the requested workspace require explicit scope;
-  authorization for one does not imply the others.
+  it also asks for fixes.
 - Approval checks belong immediately before the gated effect. Once granted,
   continue through verification without asking again unless the target, scope,
   risk, or cost materially changes.
+- Decide reversible judgment calls with a safe default and disclose them in one
+  labeled place. Deciding silently takes authority the user did not give;
+  deciding in the open gives them a cheap veto.
 
 ## Completion and recovery
 
 - Continue until the requested outcome is implemented and verified, or until a
   concrete blocker requires user action. A failed command or delegated worker
   is evidence to diagnose, not an automatic stop condition.
-- Retry only when the cause is understood and the retry changes something
-  relevant. Use a safe fallback within the same scope when available; do not
+- Retries live at three layers; never apply one layer's count to another:
+  single command (retry only with an understood cause and a changed relevant
+  input), a task brief's inner loop (the brief's own stop rules, e.g. three
+  consecutive acceptance failures moves to the next item), and the run-level
+  repair bound (declared before dispatch, mechanically enforced by the
+  coordinator runner).
+- Use a safe fallback within the same scope when available; do not
   silently broaden permissions, switch an explicitly chosen provider, or
   replace a requested workflow with a materially different one.
 - Do not claim completion from a worker report or zero exit code alone. Review

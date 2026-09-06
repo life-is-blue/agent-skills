@@ -93,12 +93,12 @@ Resolve by inspection or collect only when not observable:
 Measure before asking. Run the commands, read the code, and record real baseline
 numbers, because a command named in a document may not exist, a lint step may be
 a placeholder that always passes, and a stated capability may not match the
-installed one. Anything a measurement can settle is not a question for the user.
+installed one.
 
 For judgment calls, use a safe reversible default when it preserves the stated
-quality floor and scope. Ask about direction, acceptance strictness, or risk only
-when the alternatives would materially change the outcome. Consolidate required
-questions into one round, and ask again only when new evidence invalidates the
+quality floor and scope. Under the repository's execution-authority rules, the
+choices worth a question in this Skill are direction, acceptance strictness,
+and risk. Ask again only when new evidence invalidates the
 authorization or assumption being relied on.
 
 Otherwise decide, and disclose. List every call made on the user's behalf in one
@@ -246,7 +246,9 @@ worker's prose, decides whether evidence meets the gate.
 - Repair a rejected candidate with a narrow fix contract that carries the
   previous gates forward, not by reissuing the original task.
 - Declare a retry, time, or cost bound proportional to the run's risk before
-  dispatch. When a blocker recurs, use the evidence to change contract, provider,
+  dispatch. This is the run-level bound; it caps contract reissues, not the
+  worker's own inner-loop retries inside one dispatch. When a blocker recurs,
+  use the evidence to change contract, provider,
   or approach; stop at the declared bound instead of applying a universal retry
   count.
 - Do not merge, push, deploy, or mutate external systems unless the user has

@@ -432,7 +432,7 @@ def test_dispatch_injects_envelope_tail(tmp_path: Path):
               / "round-1.prompt.md").read_text()
     assert "# frozen contract" in prompt          # contract text preserved
     assert "机械校验" in prompt                     # tail injected
-    assert '"round_id":"round-1"' in prompt        # round id substituted
+    assert "runner 自动补齐" in prompt              # registry fields disclaimed
     assert prompt.rindex("机械校验") > prompt.rindex("frozen contract")  # tail is last
 
 
@@ -463,3 +463,27 @@ def test_blocked_resumes_via_human_gate_only(tmp_path: Path):
                        "--to", "ready", check=False)
     assert illegal.returncode == 2
     assert "not legal" in illegal.stderr
+
+
+def test_collect_autofills_runner_known_fields(tmp_path: Path):
+    init_run(tmp_path)
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    # worker-authored fields only; registry fields are the runner's job
+    lean = {k: v for k, v in IMPL_OK.items()
+            if k not in ("schema_version", "role", "round_id", "start_revision")}
+    delivery = dispatch_and_collect(tmp_path, transport, "implementer", lean)
+    assert delivery["outcome"] == "collected"
+    assert set(delivery["autofilled"]) == {
+        "schema_version", "role", "round_id", "start_revision"}
+    assert delivery["status"] == "completed"
+
+
+def test_collect_rejects_inconsistent_runner_fields(tmp_path: Path):
+    init_run(tmp_path)
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    wrong = {**IMPL_OK, "round_id": "round-9"}
+    delivery = dispatch_and_collect(tmp_path, transport, "implementer", wrong)
+    assert delivery["outcome"] == "infrastructure-failure"
+    assert "round_id" in delivery["detail"]

@@ -36,6 +36,13 @@ ADVANCE_TRANSITIONS = {
 }
 HOLDING_STATES = {"human-gate", "blocked"}
 
+# The runner already knows these (role/round from the dispatch, start_revision
+# from goal.json, schema_version from this file). Asking the worker to
+# transcribe registry data is pure failure surface — every transcribed field
+# is a chance to improvise. Missing runner-known fields are auto-filled at
+# collect; present-but-inconsistent ones are infrastructure failures.
+RUNNER_KNOWN = {"schema_version", "role", "round_id", "start_revision"}
+
 IMPLEMENTER_REQUIRED = {
     "schema_version",
     "role",
@@ -116,27 +123,26 @@ def sha256_file(path: Path) -> str:
 ENVELOPE_TAILS = {
     "implementer": """
 ═══ 交付信封 schema（机械校验，优先级高于上文一切格式暗示）═══
-把你的交付 JSON 写到合同指定的 result 路径。字段严格如下，多一个少一个
-都算基础设施失败：
-{"schema_version":1,"role":"implementer","status":"completed"或"blocked",
-"round_id":"<本轮 id>","start_revision":"<开工时 git rev-parse HEAD 实测>",
+把你的交付 JSON 写到合同指定的 result 路径。你**必须**提供的字段：
+{"status":"completed"或"blocked",
 "candidate_revision":"<commit sha 或 uncommitted-working-tree>",
 "changed_files":[...],
 "commands":[{"command":"真实跑过的命令","exit_code":0},...],
 "unresolved":[...],"summary":"..."}
-注意：字段名是 round_id（不是 round）；status 只有 completed|blocked；
-命令证据放 commands 数组。不要模仿你在仓库里看到的任何其他 JSON 样式。
+登记字段（schema_version/role/round_id/start_revision）由 runner 自动补齐，
+你不用写；若写，必须与事实完全一致（round_id 不是 round，不一致即拒收）。
+status 只有 completed|blocked；命令证据放 commands 数组。
 """,
     "reviewer": """
 ═══ 裁决信封 schema（机械校验，优先级高于上文一切格式暗示）═══
-把裁决 JSON 写到合同指定的 review 路径。字段严格如下，多一个少一个都算
-基础设施失败：
-{"schema_version":1,"role":"reviewer","verdict":"go"或"no-go",
-"round_id":"<本轮 id>","start_revision":"...","candidate_revision":"...",
+把裁决 JSON 写到合同指定的 review 路径。你**必须**提供的字段：
+{"verdict":"go"或"no-go",
+"candidate_revision":"...",
 "checks":[{"id":"...","kind":"open"或"withheld","required":true,
 "passed":true或false,"evidence":"命令+结果"},...],
 "blockers":[...],"spec_uncertainties":[...],"infrastructure_errors":[...]}
-注意：字段名是 round_id；verdict 只有 go|no-go。
+登记字段（schema_version/role/round_id/start_revision）由 runner 自动补齐，
+你不用写；若写，必须与事实完全一致。verdict 只有 go|no-go。
 """,
 }
 
@@ -443,11 +449,38 @@ def cmd_collect(args: argparse.Namespace) -> dict:
             payload = json.loads(artifact.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             payload = None
-        problems = validate_envelope(args.role, payload)
+        autofilled: list[str] = []
+        inconsistent: list[str] = []
+        if isinstance(payload, dict):
+            known = {
+                "schema_version": SCHEMA_VERSION,
+                "role": args.role,
+                "round_id": args.round,
+                "start_revision": goal.data.get("start_revision"),
+            }
+            inconsistent = [
+                k for k in sorted(RUNNER_KNOWN)
+                if k in payload and known[k] is not None and payload[k] != known[k]
+            ]
+            if not inconsistent:
+                for k in RUNNER_KNOWN:
+                    if k not in payload:
+                        payload[k] = known[k]
+                        autofilled.append(k)
+        if not isinstance(payload, dict):
+            problems = ["envelope is not a JSON object"]
+        elif inconsistent:
+            problems = [
+                "runner-known fields inconsistent: " + ", ".join(inconsistent)
+            ]
+        else:
+            problems = validate_envelope(args.role, payload)
         if problems:
             outcome = {"outcome": "infrastructure-failure", "detail": "; ".join(problems)}
         else:
             outcome = {"outcome": "collected"}
+            if autofilled:
+                outcome["autofilled"] = sorted(autofilled)
             if args.role == "implementer":
                 outcome["status"] = payload["status"]
                 outcome["candidate_revision"] = payload["candidate_revision"]

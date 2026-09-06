@@ -461,6 +461,46 @@ def cmd_advance(args: argparse.Namespace) -> dict:
     }
 
 
+def cmd_archive(args: argparse.Namespace) -> dict:
+    run = Run(Path(args.workdir).resolve(), args.run_id)
+    skill_dir = Path(__file__).resolve().parents[1]
+    sink = skill_dir / "runs" / args.run_id
+    if sink.exists() and not args.force:
+        fail(f"archive {sink} already exists; pass --force to overwrite")
+    sink.mkdir(parents=True, exist_ok=True)
+    files = []
+    for name in ("run.json", "ledger.json", "constraints.md"):
+        source = run.dir / name
+        if source.is_file():
+            (sink / name).write_bytes(source.read_bytes())
+            files.append(name)
+    for sub in ("contracts", "deliveries", "reviews"):
+        for source in sorted((run.dir / sub).glob("*")):
+            if source.is_file():
+                target_dir = sink / sub
+                target_dir.mkdir(exist_ok=True)
+                (target_dir / source.name).write_bytes(source.read_bytes())
+                files.append(f"{sub}/{source.name}")
+    meta = {
+        "run_id": args.run_id,
+        "state_at_archive": run.state,
+        "archived_at": now_iso(),
+        "source": str(run.dir),
+        "files": files,
+    }
+    atomic_write(
+        sink / "archive-meta.json", json.dumps(meta, indent=2, sort_keys=True) + "\n"
+    )
+    return {
+        "command": "archive",
+        "run_id": args.run_id,
+        "state": run.state,
+        "archived_to": str(sink),
+        "files": files,
+        "errors": [],
+    }
+
+
 def cmd_status(args: argparse.Namespace) -> dict:
     run = Run(Path(args.workdir).resolve(), args.run_id)
     return {
@@ -535,6 +575,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--note")
     p.set_defaults(func=cmd_advance)
+
+    p = sub.add_parser("archive")
+    common(p)
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_archive)
 
     p = sub.add_parser("status")
     common(p)

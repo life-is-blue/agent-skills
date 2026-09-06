@@ -50,6 +50,19 @@ commit them or edit `.gitignore`; follow the target repository's runtime-artifac
 policy. Put withheld checks and raw transport logs in the host state directory,
 keyed by the same run ID. Never copy credentials into either location.
 
+## Artifact lifecycle
+
+The worktree run directory is **per-run working state**: it exists so roles can
+read contracts and constraints while the run is live, and it carries no
+long-term obligation. When a run reaches a terminal state, archive the receipt
+bundle (`run.json`, `ledger.json`, `constraints.md`, contracts, deliveries,
+reviews) with `coordinator_run.py archive`, which copies it to
+`skills/coordinator/runs/<run-id>/` — the skill's own directory, gitignored
+upstream. That archive is the long-term, traceable record and the raw material
+for later skill evolution; the worktree copy may then be cleaned up by the
+host's own policy. Run receipts never enter the target repository's history
+unless that repository deliberately chooses otherwise.
+
 ## Transport conformance
 
 A compatible transport can:

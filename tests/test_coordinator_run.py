@@ -285,6 +285,38 @@ def test_completed_requires_mechanical_go(tmp_path: Path):
     assert "mechanical go" in proc.stderr
 
 
+def test_archive_copies_receipt_bundle_to_skill_runs(tmp_path: Path):
+    init_run(tmp_path)
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    freeze_round(tmp_path, transport, role="reviewer", name="review.md")
+    dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
+    dispatch_and_collect(tmp_path, transport, "reviewer", REVIEW_GO)
+    run_coordinator("advance", "--workdir", tmp_path, "--run-id", "r1",
+                    "--to", "completed")
+
+    archived = payload(run_coordinator("archive", "--workdir", tmp_path,
+                                       "--run-id", "r1"))
+    sink = Path(archived["archived_to"])
+    assert sink.parent == (ROOT / "skills" / "coordinator" / "runs")
+    assert (sink / "run.json").is_file()
+    assert (sink / "ledger.json").is_file()
+    assert (sink / "contracts" / "round-1.md").is_file()
+    assert (sink / "deliveries" / "round-1.json").is_file()
+    assert (sink / "reviews" / "round-1.json").is_file()
+    meta = json.loads((sink / "archive-meta.json").read_text())
+    assert meta["state_at_archive"] == "completed"
+
+    repeat = run_coordinator("archive", "--workdir", tmp_path, "--run-id", "r1",
+                             check=False)
+    assert repeat.returncode != 0
+    forced = run_coordinator("archive", "--workdir", tmp_path, "--run-id", "r1",
+                             "--force")
+    assert payload(forced)["state"] == "completed"
+    import shutil
+    shutil.rmtree(sink)
+
+
 def test_human_gate_parks_and_resumes(tmp_path: Path):
     init_run(tmp_path)
     transport = make_transport(tmp_path)

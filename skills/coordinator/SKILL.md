@@ -26,6 +26,19 @@ bound becomes a Tier 3 run. Tiers 1 and 2 are modules of the same control
 plane as Tier 3, not separate products — a brief's 明卷/暗卷 are the loop's
 open/withheld checks.
 
+## Vocabulary
+
+| Term | Same thing elsewhere | Meaning |
+|---|---|---|
+| coordinator | 管理者 / 管控者 | The agent holding this playbook; owns decisions |
+| user | 领导 | The human; owns direction and external-effect authorization |
+| implementer | 执行者 | The role carrying out a frozen contract |
+| reviewer | 验收官 / acceptance agent | The independent evidence role |
+| run | — | One objective, tracked in `.coordinator/<run-id>/` |
+| round | 轮 | One contract → candidate → verdict cycle inside a run |
+| session / job | — | A transport-level worker process (coding-agent says session, codex_run says job) |
+| archive | 回执包 | Terminal receipt copy under `skills/coordinator/runs/`, gitignored |
+
 ## The verified loop (Tier 3)
 
 This Skill defines the control plane: scope, frozen
@@ -231,7 +244,10 @@ python3 "$SKILL_DIR/scripts/coordinator_run.py" advance --run-id run-1 \
 
 The transport defaults to the sibling `coding-agent` Skill; override with
 `--transport-dir` or `CODING_AGENT_DIR`. Withheld checks and raw transport
-logs still live in host-private state, outside the repository.
+logs still live in host-private state, outside the repository. When a run
+ends, `archive` copies the receipt bundle to `skills/coordinator/runs/<run-id>/`
+(gitignored) — the long-term, traceable record; the worktree
+`.coordinator/<run-id>/` is per-run working state.
 
 ## Verify and stop
 

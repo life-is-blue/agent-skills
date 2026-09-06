@@ -433,6 +433,7 @@ def test_dispatch_injects_envelope_tail(tmp_path: Path):
     assert "# frozen contract" in prompt          # contract text preserved
     assert "机械校验" in prompt                     # tail injected
     assert "runner 自动补齐" in prompt              # registry fields disclaimed
+    assert "deliveries/round-1.json" in prompt      # exact result path stated
     assert prompt.rindex("机械校验") > prompt.rindex("frozen contract")  # tail is last
 
 

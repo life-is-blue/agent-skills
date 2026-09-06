@@ -123,7 +123,8 @@ def sha256_file(path: Path) -> str:
 ENVELOPE_TAILS = {
     "implementer": """
 ═══ 交付信封 schema（机械校验，优先级高于上文一切格式暗示）═══
-把你的交付 JSON 写到合同指定的 result 路径。你**必须**提供的字段：
+把你的交付 JSON 写到：{result_path}（就是这个路径，别找别处）。
+你**必须**提供的字段：
 {"status":"completed"或"blocked",
 "candidate_revision":"<commit sha 或 uncommitted-working-tree>",
 "changed_files":[...],
@@ -135,7 +136,8 @@ status 只有 completed|blocked；命令证据放 commands 数组。
 """,
     "reviewer": """
 ═══ 裁决信封 schema（机械校验，优先级高于上文一切格式暗示）═══
-把裁决 JSON 写到合同指定的 review 路径。你**必须**提供的字段：
+把裁决 JSON 写到：{result_path}（就是这个路径，别找别处）。
+你**必须**提供的字段：
 {"verdict":"go"或"no-go",
 "candidate_revision":"...",
 "checks":[{"id":"...","kind":"open"或"withheld","required":true,
@@ -147,10 +149,10 @@ status 只有 completed|blocked；命令证据放 commands 数组。
 }
 
 
-def build_dispatch_prompt(role: str, contract: Path, round_id: str) -> str:
+def build_dispatch_prompt(role: str, contract: Path, result_path: str) -> str:
     return (
         contract.read_text(encoding="utf-8")
-        + ENVELOPE_TAILS[role].replace("<本轮 id>", round_id)
+        + ENVELOPE_TAILS[role].replace("{result_path}", result_path)
     )
 
 
@@ -332,7 +334,7 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
     # ENVELOPE_TAILS). Materialize the combined prompt for the transport.
     prompt_file = goal.dir / "contracts" / f"{args.round}{suffix}.prompt.md"
     atomic_write(
-        prompt_file, build_dispatch_prompt(args.role, contract, args.round)
+        prompt_file, build_dispatch_prompt(args.role, contract, result_rel)
     )
     command = [
         "bash",

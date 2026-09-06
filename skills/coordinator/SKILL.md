@@ -183,6 +183,55 @@ A call that cannot produce one of these does not belong in the run. Idle capacit
 costs nothing, while a round spent on work nobody needed costs the coordinator's
 attention, which is the resource that actually runs short.
 
+## Mechanism: coordinator_run.py
+
+`scripts/coordinator_run.py` executes the state machine from
+[the runtime contract](references/runtime-contract.md) so the coordinator does
+not relay jobs or keep books by hand. It does three things and no more:
+
+- **Bookkeeping** — `init` scaffolds `.coordinator/<run-id>/` (`run.json`,
+  `ledger.json`, `constraints.md`, contract/delivery/review directories);
+  `status` reports current state.
+- **Guarded transitions** — `freeze` (establishing/repairing → ready),
+  `dispatch` (drives the `coding-agent` transport; ready → implementing →
+  reviewing), and `advance` (coordinator-driven moves) refuse illegal
+  transitions. The repair bound is enforced mechanically: when it is
+  exhausted, the only legal move is `blocked`.
+- **Mechanical envelope validation** — `collect` checks the implementation
+  and review envelopes against their contract shapes. A missing or malformed
+  artifact is recorded as an **infrastructure failure**, never as an
+  implementation rejection.
+
+It never adjudicates. `collect` reports facts (verdict, mechanical go shape,
+infrastructure failures); the coordinator weighs them and calls `advance`
+explicitly. A typical round:
+
+```bash
+SKILL_DIR=/path/to/coordinator
+cd /path/to/worktree
+
+python3 "$SKILL_DIR/scripts/coordinator_run.py" init --run-id run-1 \
+  --objective "..." --mode standard --repair-bound 3 --json
+python3 "$SKILL_DIR/scripts/coordinator_run.py" freeze --run-id run-1 \
+  --round round-1 --contract /path/to/task-brief.md --json
+python3 "$SKILL_DIR/scripts/coordinator_run.py" freeze --run-id run-1 \
+  --round round-1 --role reviewer --contract /path/to/review-brief.md --json
+python3 "$SKILL_DIR/scripts/coordinator_run.py" dispatch --run-id run-1 \
+  --round round-1 --role implementer --json
+python3 "$SKILL_DIR/scripts/coordinator_run.py" collect --run-id run-1 \
+  --round round-1 --role implementer --json
+python3 "$SKILL_DIR/scripts/coordinator_run.py" dispatch --run-id run-1 \
+  --round round-1 --role reviewer --json
+python3 "$SKILL_DIR/scripts/coordinator_run.py" collect --run-id run-1 \
+  --round round-1 --role reviewer --json
+python3 "$SKILL_DIR/scripts/coordinator_run.py" advance --run-id run-1 \
+  --to completed --note "gate reproduced" --json
+```
+
+The transport defaults to the sibling `coding-agent` Skill; override with
+`--transport-dir` or `CODING_AGENT_DIR`. Withheld checks and raw transport
+logs still live in host-private state, outside the repository.
+
 ## Verify and stop
 
 Use [the review contract](references/review-contract.md). The controller, not a

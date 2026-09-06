@@ -11,7 +11,7 @@
     },
     {
       "name": "coordinator",
-      "distribution": "protocol-only"
+      "distribution": "adapter"
     },
     {
       "name": "office-mpp",

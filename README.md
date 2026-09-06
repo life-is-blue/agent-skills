@@ -10,7 +10,7 @@ its scripts and references remain available.
 |---|---|---|
 | `branded-pptx` | bundled | Build decks from an outline on your own .pptx template, with layout verification |
 | `coding-agent` | adapter | Run Codex, Claude Code, TClaude, CodeBuddy Code, or OpenCode as monitored background workers, with a structured Codex mode returning a machine-readable result envelope |
-| `coordinator` | protocol-only | The coordinating agent's control-plane playbook: grill vague requirements, freeze task briefs, and run multi-round verified loops with independent acceptance |
+| `coordinator` | adapter | The coordinating agent's control-plane playbook: grill vague requirements, freeze task briefs, and run multi-round verified loops; bundles the state-machine runner that drives the coding-agent transport |
 | `office-mpp` | bundled | Read, analyze, export, create, and edit Microsoft Project or MSPDI files |
 | `openclaw-coding-agent` | adapter | Run supported coding CLIs through OpenClaw sessions and notifications |
 | `pdf-to-markdown` | protocol-only | Guide a host-provided PDF-to-Markdown workflow |

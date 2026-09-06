@@ -1,0 +1,566 @@
+#!/usr/bin/env python3
+"""Drive the coordinator runtime-contract state machine.
+
+The script owns bookkeeping (run.json / ledger.json), guarded transitions,
+transport dispatch through the coding-agent Skill, and mechanical envelope
+validation. It never adjudicates: the coordinator reads the facts this script
+reports and calls `advance` explicitly. A `go` verdict from this script means
+"the envelope satisfies the mechanical shape", not "the work is accepted".
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+SCHEMA_VERSION = 1
+
+EXIT_OK = 0
+EXIT_INPUT = 1
+EXIT_GUARD = 2
+
+TERMINAL_STATES = {"completed", "blocked"}
+# Role-driven transitions happen inside freeze/dispatch. This table covers the
+# coordinator-driven `advance` command only.
+ADVANCE_TRANSITIONS = {
+    "reviewing": {"ready", "repairing", "completed"},
+    "human-gate": {"ready", "repairing", "completed"},
+}
+HOLDING_STATES = {"human-gate", "blocked"}
+
+IMPLEMENTER_REQUIRED = {
+    "schema_version",
+    "role",
+    "status",
+    "round_id",
+    "start_revision",
+    "candidate_revision",
+    "changed_files",
+    "commands",
+    "unresolved",
+    "summary",
+}
+REVIEWER_REQUIRED = {
+    "schema_version",
+    "role",
+    "verdict",
+    "round_id",
+    "start_revision",
+    "candidate_revision",
+    "checks",
+    "blockers",
+    "spec_uncertainties",
+    "infrastructure_errors",
+}
+
+
+class InputError(Exception):
+    """Caller supplied an unusable request."""
+
+
+class GuardError(Exception):
+    """The state machine forbids this transition or action."""
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def emit(payload: dict, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    lines = [f"{key}: {value}" for key, value in payload.items() if key != "errors"]
+    print("\n".join(lines))
+    for error in payload.get("errors", []):
+        print(f"error: {error}", file=sys.stderr)
+
+
+def fail(message: str, kind=InputError) -> None:
+    raise kind(message)
+
+
+def atomic_write(path: Path, text: str) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def load_json(path: Path, what: str) -> dict:
+    if not path.is_file():
+        fail(f"{what} not found at {path}; run `init` first")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        fail(f"{what} at {path} is malformed; inspect it by hand")
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+class Run:
+    def __init__(self, workdir: Path, run_id: str):
+        if not run_id or "/" in run_id or run_id.startswith("."):
+            fail("run-id must be a plain path segment")
+        self.dir = workdir / ".coordinator" / run_id
+        self.run_path = self.dir / "run.json"
+        self.ledger_path = self.dir / "ledger.json"
+        self.run = load_json(self.run_path, "run.json")
+        self.ledger = load_json(self.ledger_path, "ledger.json")
+
+    @property
+    def state(self) -> str:
+        return self.run["state"]
+
+    def require_state(self, allowed: set[str], action: str) -> None:
+        if self.state not in allowed:
+            raise GuardError(
+                f"cannot {action} from state {self.state!r}; allowed: {sorted(allowed)}"
+            )
+
+    def set_state(self, state: str) -> None:
+        self.run["state"] = state
+        self.run["updated_at"] = now_iso()
+
+    def save(self) -> None:
+        atomic_write(self.run_path, json.dumps(self.run, indent=2, sort_keys=True) + "\n")
+        atomic_write(
+            self.ledger_path, json.dumps(self.ledger, indent=2, sort_keys=True) + "\n"
+        )
+
+    def round_entry(self, round_id: str) -> dict:
+        return self.ledger.setdefault("rounds", {}).setdefault(round_id, {})
+
+
+def resolve_transport_dir(explicit: str | None) -> Path:
+    candidate = (
+        explicit
+        or os.environ.get("CODING_AGENT_DIR")
+        or str(Path(__file__).resolve().parents[2] / "coding-agent")
+    )
+    runner = Path(candidate) / "scripts" / "coding-agent-run"
+    if not runner.is_file():
+        fail(
+            f"coding-agent transport not found at {runner}; "
+            "pass --transport-dir or set CODING_AGENT_DIR"
+        )
+    return runner
+
+
+def find_job(run: Run, round_id: str, role: str) -> dict:
+    for job in reversed(run.run.get("jobs", [])):
+        if job["round_id"] == round_id and job["role"] == role:
+            return job
+    fail(f"no {role} dispatch recorded for {round_id}; run `dispatch` first")
+
+
+def cmd_init(args: argparse.Namespace) -> dict:
+    workdir = Path(args.workdir).resolve()
+    if not workdir.is_dir():
+        fail(f"workdir {workdir} does not exist")
+    run_dir = workdir / ".coordinator" / args.run_id
+    if run_dir.exists():
+        fail(f"run directory {run_dir} already exists; pick a new run-id")
+    for sub in ("contracts", "deliveries", "reviews"):
+        (run_dir / sub).mkdir(parents=True)
+    revision = args.start_revision
+    if not revision:
+        try:
+            revision = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            revision = None
+    run = {
+        "schema_version": SCHEMA_VERSION,
+        "run_id": args.run_id,
+        "objective": args.objective,
+        "mode": args.mode,
+        "state": "establishing",
+        "resume_state": None,
+        "start_revision": revision,
+        "current_round": None,
+        "transport": "coding-agent",
+        "repair_bound": args.repair_bound,
+        "repairs_used": 0,
+        "jobs": [],
+        "updated_at": now_iso(),
+    }
+    ledger = {"schema_version": SCHEMA_VERSION, "run_id": args.run_id, "rounds": {}}
+    atomic_write(run_dir / "run.json", json.dumps(run, indent=2, sort_keys=True) + "\n")
+    atomic_write(
+        run_dir / "ledger.json", json.dumps(ledger, indent=2, sort_keys=True) + "\n"
+    )
+    (run_dir / "constraints.md").write_text(
+        "# Constraints\n\nInvariants, scope, and gates for this run.\n",
+        encoding="utf-8",
+    )
+    return {
+        "command": "init",
+        "run_id": args.run_id,
+        "state": "establishing",
+        "run_dir": str(run_dir),
+        "start_revision": revision,
+        "errors": [],
+    }
+
+
+def cmd_freeze(args: argparse.Namespace) -> dict:
+    run = Run(Path(args.workdir).resolve(), args.run_id)
+    if args.role == "implementer":
+        # An implementer freeze is the go signal: it advances the run.
+        run.require_state({"establishing", "repairing"}, "freeze a contract")
+    else:
+        # A review contract is bookkeeping prepared around the dispatch; it
+        # must never move the state machine backwards or forwards.
+        run.require_state(
+            {"establishing", "ready", "implementing", "repairing"},
+            "freeze a review contract",
+        )
+    source = Path(args.contract)
+    if not source.is_file():
+        fail(f"contract file {source} not found")
+    suffix = "-review" if args.role == "reviewer" else ""
+    target = run.dir / "contracts" / f"{args.round}{suffix}.md"
+    target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    entry = run.round_entry(args.round)
+    key = "review_contract" if args.role == "reviewer" else "contract"
+    entry[key] = {"path": str(target), "sha256": sha256_file(target)}
+    if args.role == "implementer":
+        run.run["current_round"] = args.round
+        run.set_state("ready")
+    run.save()
+    return {
+        "command": "freeze",
+        "run_id": args.run_id,
+        "round_id": args.round,
+        "role": args.role,
+        "state": run.state,
+        "contract_sha256": entry[key]["sha256"],
+        "errors": [],
+    }
+
+
+def cmd_dispatch(args: argparse.Namespace) -> dict:
+    run = Run(Path(args.workdir).resolve(), args.run_id)
+    workdir = Path(args.workdir).resolve()
+    if args.role == "implementer":
+        run.require_state({"ready"}, "dispatch an implementer")
+        if run.run.get("current_round") != args.round:
+            fail(
+                f"current round is {run.run.get('current_round')!r}, "
+                f"not {args.round!r}; freeze the implementer contract first"
+            )
+        result_rel = f".coordinator/{args.run_id}/deliveries/{args.round}.json"
+    else:
+        run.require_state({"implementing"}, "dispatch a reviewer")
+        entry = run.round_entry(args.round)
+        delivery = entry.get("implementer", {})
+        if delivery.get("outcome") != "collected":
+            fail(
+                f"no collected implementer delivery for {args.round}; "
+                "run `collect --role implementer` first"
+            )
+        result_rel = f".coordinator/{args.run_id}/reviews/{args.round}.json"
+    suffix = "-review" if args.role == "reviewer" else ""
+    contract = run.dir / "contracts" / f"{args.round}{suffix}.md"
+    if not contract.is_file():
+        fail(f"contract {contract} not found; freeze it first")
+
+    runner = resolve_transport_dir(args.transport_dir)
+    command = [
+        "bash",
+        str(runner),
+        "run",
+        "--agent",
+        args.agent,
+        "--workdir",
+        str(workdir),
+        "--prompt-file",
+        str(contract),
+        "--result-file",
+        result_rel,
+        "--json",
+    ]
+    try:
+        proc = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=args.timeout,
+            env={**os.environ, **(args.transport_env or {})},
+        )
+    except subprocess.TimeoutExpired:
+        raise GuardError(f"transport did not return within {args.timeout}s")
+    try:
+        envelope = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        raise GuardError(
+            f"transport returned no parseable envelope (exit {proc.returncode}): "
+            f"{proc.stderr.strip()[:200] or proc.stdout.strip()[:200]}"
+        )
+
+    job = {
+        "round_id": args.round,
+        "role": args.role,
+        "session_id": envelope.get("session_id"),
+        "agent": envelope.get("agent", args.agent),
+        "dispatched_at": now_iso(),
+        "transport_status": envelope.get("status"),
+        "worker_exit_code": envelope.get("worker_exit_code"),
+        "result_artifact": envelope.get("result_artifact", {}).get("status"),
+    }
+    run.run.setdefault("jobs", []).append(job)
+    run.set_state("implementing" if args.role == "implementer" else "reviewing")
+    run.save()
+    return {
+        "command": "dispatch",
+        "run_id": args.run_id,
+        "state": run.state,
+        "job": job,
+        "errors": envelope.get("errors", []),
+    }
+
+
+def validate_envelope(role: str, payload: object) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["envelope is not a JSON object"]
+    errors: list[str] = []
+    required = IMPLEMENTER_REQUIRED if role == "implementer" else REVIEWER_REQUIRED
+    missing = sorted(required - payload.keys())
+    if missing:
+        errors.append(f"missing fields: {', '.join(missing)}")
+        return errors
+    if payload.get("schema_version") != SCHEMA_VERSION:
+        errors.append(f"unsupported schema_version {payload.get('schema_version')!r}")
+    if payload.get("role") != role:
+        errors.append(f"role is {payload.get('role')!r}, expected {role!r}")
+    if role == "implementer":
+        if payload.get("status") not in {"completed", "blocked"}:
+            errors.append(f"implementation status {payload.get('status')!r} invalid")
+    else:
+        if payload.get("verdict") not in {"go", "no-go"}:
+            errors.append(f"review verdict {payload.get('verdict')!r} invalid")
+    return errors
+
+
+def mechanical_go(payload: dict) -> bool:
+    """The review contract's mechanical `go` shape, no adjudication."""
+    if payload.get("verdict") != "go":
+        return False
+    for check in payload.get("checks", []):
+        if check.get("required") and not check.get("passed"):
+            return False
+        if check.get("required") and not (
+            check.get("evidence") or check.get("evidence_ref")
+        ):
+            return False
+    return not (
+        payload.get("blockers")
+        or payload.get("spec_uncertainties")
+        or payload.get("infrastructure_errors")
+    )
+
+
+def cmd_collect(args: argparse.Namespace) -> dict:
+    run = Run(Path(args.workdir).resolve(), args.run_id)
+    job = find_job(run, args.round, args.role)
+    rel = (
+        f"deliveries/{args.round}.json"
+        if args.role == "implementer"
+        else f"reviews/{args.round}.json"
+    )
+    artifact = run.dir / rel
+    entry = run.round_entry(args.round)
+    outcome: dict
+    if not artifact.is_file():
+        outcome = {
+            "outcome": "infrastructure-failure",
+            "detail": f"result artifact {artifact} is missing",
+        }
+    else:
+        try:
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = None
+        problems = validate_envelope(args.role, payload)
+        if problems:
+            outcome = {"outcome": "infrastructure-failure", "detail": "; ".join(problems)}
+        else:
+            outcome = {"outcome": "collected"}
+            if args.role == "implementer":
+                outcome["status"] = payload["status"]
+                outcome["candidate_revision"] = payload["candidate_revision"]
+            else:
+                outcome["verdict"] = payload["verdict"]
+                outcome["mechanical_go"] = mechanical_go(payload)
+    entry[args.role] = {**outcome, "job": job, "collected_at": now_iso()}
+    run.save()
+    return {
+        "command": "collect",
+        "run_id": args.run_id,
+        "round_id": args.round,
+        "role": args.role,
+        "state": run.state,
+        **outcome,
+        "errors": [] if outcome["outcome"] == "collected" else [outcome["detail"]],
+    }
+
+
+def cmd_advance(args: argparse.Namespace) -> dict:
+    run = Run(Path(args.workdir).resolve(), args.run_id)
+    current = run.state
+    target = args.to
+    if current in TERMINAL_STATES:
+        raise GuardError(f"run is already {current}; no further transitions")
+    if target in HOLDING_STATES:
+        if target == "human-gate":
+            run.run["resume_state"] = current
+    else:
+        allowed = ADVANCE_TRANSITIONS.get(current, set())
+        if target not in allowed:
+            raise GuardError(f"transition {current} -> {target} is not legal")
+        if target == "repairing":
+            used = run.run.get("repairs_used", 0) + 1
+            bound = run.run.get("repair_bound")
+            if bound is not None and used > bound:
+                raise GuardError(
+                    f"repair bound {bound} exhausted; advance to blocked instead"
+                )
+            run.run["repairs_used"] = used
+        if target == "completed":
+            round_id = run.run.get("current_round")
+            review = run.round_entry(round_id).get("reviewer", {}) if round_id else {}
+            if not review.get("mechanical_go"):
+                raise GuardError(
+                    "cannot complete: no collected reviewer verdict with a "
+                    "mechanical go on the current round"
+                )
+    run.set_state(target)
+    if args.note:
+        run.run["last_note"] = args.note
+    run.save()
+    return {
+        "command": "advance",
+        "run_id": args.run_id,
+        "from": current,
+        "state": run.state,
+        "repairs_used": run.run.get("repairs_used"),
+        "errors": [],
+    }
+
+
+def cmd_status(args: argparse.Namespace) -> dict:
+    run = Run(Path(args.workdir).resolve(), args.run_id)
+    return {
+        "command": "status",
+        "run_id": args.run_id,
+        "state": run.state,
+        "current_round": run.run.get("current_round"),
+        "repairs_used": run.run.get("repairs_used"),
+        "repair_bound": run.run.get("repair_bound"),
+        "jobs": run.run.get("jobs", []),
+        "rounds": run.ledger.get("rounds", {}),
+        "errors": [],
+    }
+
+
+def transport_env(value: str) -> dict:
+    # Repeated KEY=VALUE flags, passed through to the transport process.
+    key, sep, val = value.partition("=")
+    if not sep:
+        raise argparse.ArgumentTypeError("transport env must be KEY=VALUE")
+    return {key: val}
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="coordinator_run.py")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    def common(p: argparse.ArgumentParser, run_id=True) -> None:
+        p.add_argument("--workdir", default=".")
+        if run_id:
+            p.add_argument("--run-id", required=True)
+        p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("init")
+    common(p, run_id=False)
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--objective", required=True)
+    p.add_argument("--mode", default="standard")
+    p.add_argument("--start-revision")
+    p.add_argument("--repair-bound", type=int, default=3)
+    p.set_defaults(func=cmd_init)
+
+    p = sub.add_parser("freeze")
+    common(p)
+    p.add_argument("--round", required=True)
+    p.add_argument("--role", choices=["implementer", "reviewer"], default="implementer")
+    p.add_argument("--contract", required=True)
+    p.set_defaults(func=cmd_freeze)
+
+    p = sub.add_parser("dispatch")
+    common(p)
+    p.add_argument("--round", required=True)
+    p.add_argument("--role", choices=["implementer", "reviewer"], required=True)
+    p.add_argument("--agent", default="auto")
+    p.add_argument("--timeout", type=int, default=3600)
+    p.add_argument("--transport-dir")
+    p.add_argument("--transport-env", type=transport_env, action="append")
+    p.set_defaults(func=cmd_dispatch)
+
+    p = sub.add_parser("collect")
+    common(p)
+    p.add_argument("--round", required=True)
+    p.add_argument("--role", choices=["implementer", "reviewer"], required=True)
+    p.set_defaults(func=cmd_collect)
+
+    p = sub.add_parser("advance")
+    common(p)
+    p.add_argument(
+        "--to",
+        required=True,
+        choices=["ready", "repairing", "completed", "human-gate", "blocked"],
+    )
+    p.add_argument("--note")
+    p.set_defaults(func=cmd_advance)
+
+    p = sub.add_parser("status")
+    common(p)
+    p.set_defaults(func=cmd_status)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    if getattr(args, "transport_env", None):
+        merged: dict = {}
+        for item in args.transport_env:
+            merged.update(item)
+        args.transport_env = merged
+    try:
+        payload = args.func(args)
+    except InputError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_INPUT
+    except GuardError as error:
+        print(f"guard: {error}", file=sys.stderr)
+        return EXIT_GUARD
+    emit(payload, args.json)
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())

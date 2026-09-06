@@ -79,7 +79,7 @@ bash "$SKILL_DIR/scripts/coding-agent-run" run \
   --agent auto \
   --workdir /path/to/isolated-worktree \
   --prompt-file /path/to/prompt.txt \
-  --result-file .verified-dev-loop/run-1/deliveries/round-1.json \
+  --result-file .coordinator/run-1/deliveries/round-1.json \
   --json
 ```
 
@@ -93,7 +93,7 @@ bash "$SKILL_DIR/scripts/coding-agent-run" start \
   --agent auto \
   --workdir /path/to/isolated-worktree \
   --prompt-file /path/to/prompt.txt \
-  --result-file .verified-dev-loop/run-1/deliveries/round-1.json \
+  --result-file .coordinator/run-1/deliveries/round-1.json \
   --json
 ```
 

@@ -85,15 +85,15 @@ def test_json_envelope_records_required_result_artifact(tmp_path: Path):
     make_provider(
         bin_dir,
         "codex",
-        'cat >/dev/null\nmkdir -p .verified-dev-loop/run/deliveries\n'
+        'cat >/dev/null\nmkdir -p .coordinator/run/deliveries\n'
         'printf \'{"role":"implementer","status":"completed"}\\n\' '
-        '> .verified-dev-loop/run/deliveries/round-1.json\n',
+        '> .coordinator/run/deliveries/round-1.json\n',
     )
     prompt = tmp_path / "prompt.txt"
     prompt.write_text("write the declared result file\n", encoding="utf-8")
     state = tmp_path / "state"
     env = runner_env(bin_dir)
-    result_file = ".verified-dev-loop/run/deliveries/round-1.json"
+    result_file = ".coordinator/run/deliveries/round-1.json"
 
     started = run_runner(
         "start",

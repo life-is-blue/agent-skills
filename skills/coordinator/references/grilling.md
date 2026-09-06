@@ -1,17 +1,12 @@
----
-name: grill-with-docs
-description: A relentless interview to sharpen a plan or design, which also creates docs (ADRs and a CONTEXT.md glossary) as it goes. Use when the user wants to stress-test a plan, decision, or idea before committing to it, or uses any "grill" trigger phrase; not for ordinary Q&A, and not for executing an already-settled plan.
----
-
-# Grill with Docs
+# Grilling — the requirement interview
 
 Interview the user persistently about their plan, decision, or idea until the
 thinking is sharp, and capture what crystallizes as durable documentation: a
 `CONTEXT.md` glossary and Architecture Decision Records. The interview is the
 engine; the docs are the exhaust — both matter.
 
-This skill is normally invoked by the user explicitly, early in a piece of
-work, before any implementation brief is written.
+This is the Tier 1 tool: use it when direction or requirements are still
+vague, before any implementation brief is written.
 
 ## The interview
 
@@ -45,7 +40,7 @@ Create files on demand — only when there is content to put in them.
 
 **Glossary.** Keep a `CONTEXT.md` at the repo root (single-context repos), or a
 `CONTEXT-MAP.md` indexing one `CONTEXT.md` per sub-area (multi-context repos).
-The exact format is [references/context-format.md](references/context-format.md).
+The exact format is [context-format.md](context-format.md).
 During the interview:
 
 - Challenge terminology conflicts the moment they appear: "Your CONTEXT.md
@@ -64,21 +59,16 @@ During the interview:
 **Decision records.** When the interview settles a decision that is hard to
 reverse, surprising without context, *and* the result of a genuine trade-off,
 record it as an ADR in `docs/adr/` per
-[references/adr-format.md](references/adr-format.md). Skip the ADR when any of
+[adr-format.md](adr-format.md). Skip the ADR when any of
 the three conditions fails — most decisions do not deserve one.
 
-## Handoff
+## When the plan is sharp
 
-A sharpened plan is not yet an executable brief. When the user wants an agent
-to carry the plan out, hand off downstream:
-
-- `leader` — turns the settled plan into a frozen, self-contained task brief
-  an execution agent can run unattended.
-- `verified-dev-loop` — when the work needs multi-round coordination with
-  independent acceptance, it takes over as the control plane.
-
-Do not start implementing the plan inside the interview. The deliverable of
-this skill is a sharp plan plus its docs.
+A sharpened plan is not yet an executable brief. Return to the coordinator's
+tier routing: single-round deliverables go to Tier 2
+([brief-authoring.md](brief-authoring.md)); multi-round work goes to Tier 3
+(the verified loop). Do not start implementing the plan inside the interview —
+the deliverable here is a sharp plan plus its docs.
 
 ## Anti-patterns
 
@@ -95,11 +85,7 @@ this skill is a sharp plan plus its docs.
 
 ## References
 
-- [context-format.md](references/context-format.md) — the `CONTEXT.md` /
+- [context-format.md](context-format.md) — the `CONTEXT.md` /
   `CONTEXT-MAP.md` glossary format.
-- [adr-format.md](references/adr-format.md) — ADR naming, minimal template,
+- [adr-format.md](adr-format.md) — ADR naming, minimal template,
   and the three-condition threshold.
-
-Adapted from the `grill-with-docs`, `grilling`, and `domain-modeling` skills
-in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT); see
-`THIRD_PARTY_NOTICES.md`.

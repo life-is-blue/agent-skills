@@ -29,7 +29,7 @@ the bound declared for this run.
 ## Public run directory
 
 Unless the repository names another runtime-artifact location, use
-`.verified-dev-loop/<run-id>/` in the worktree:
+`.coordinator/<run-id>/` in the worktree:
 
 ```text
 run.json

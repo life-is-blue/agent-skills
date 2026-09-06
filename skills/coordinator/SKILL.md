@@ -1,11 +1,34 @@
 ---
-name: verified-dev-loop
-description: Coordinate substantial software development as repeated rounds that freeze delegated work, collect evidence, and end at an acceptance gate. Use when the user asks a primary agent to coordinate coding agents, keep implementation and acceptance separate, or run a plan/implement/review loop; do not use for a simple single-agent edit, unapproved provider spending, or work without a verifiable outcome.
+name: coordinator
+description: The coordinating agent's control-plane playbook, from raw idea to verified delivery. Route by complexity - handle simple work directly, grill vague requirements into a sharp plan (references/grilling.md), freeze complex single-round work into a self-contained task brief (任务书, references/brief-authoring.md), and run super-complex multi-round work as a verified loop with independent acceptance evidence. Use when coordinating coding agents, keeping implementation and acceptance separate, stress-testing a plan (grill), writing a /goal task brief, or running a plan/implement/review loop; do not use for a simple single-agent edit, unapproved provider spending, or work without a verifiable outcome.
 ---
 
-# Verified Dev Loop
+# Coordinator
 
-Load this Skill in the coordinator. It defines the control plane: scope, frozen
+Load this Skill in the coordinating agent (管控者). Its job is to keep the main
+direction from drifting: understand what the user actually wants, then choose
+the smallest mechanism that guarantees the direction holds. Executors and
+reviewers never load this Skill — they receive frozen prompts from the
+coordinator and nothing else.
+
+## Route by complexity
+
+| Tier | The work is… | The mechanism |
+|---|---|---|
+| **0** | Simple edit, quick question, read-only lookup | Handle it directly. Do not load anything from this Skill. |
+| **1** | Direction or requirements still vague | Interview the user per [grilling.md](references/grilling.md) until the design-tree frontier is empty; capture CONTEXT.md + ADRs as you go. |
+| **2** | Clear direction, complex but single-round deliverable | Freeze it into a self-contained task brief per [brief-authoring.md](references/brief-authoring.md) (≤4000 chars for `/goal`), dispatch through a transport, verify against the brief's checks. |
+| **3** | Super-complex, multi-round, or acceptance must be independent of the implementer | Run the verified loop below: durable target (constraint set + plan ledger), frozen contracts, withheld checks, evidence-gated acceptance. |
+
+Escalate tiers when evidence demands it: a Tier 1 interview that surfaces real
+risk feeds Tier 2/3; a Tier 2 brief that bounces more than the declared repair
+bound becomes a Tier 3 run. Tiers 1 and 2 are modules of the same control
+plane as Tier 3, not separate products — a brief's 明卷/暗卷 are the loop's
+open/withheld checks.
+
+## The verified loop (Tier 3)
+
+This Skill defines the control plane: scope, frozen
 contracts, acceptance evidence, durable state, and stop decisions. A native
 subagent API or host-provided CLI adapter transports role-specific contracts and
 returns artifacts; it does not decide what should pass. Give implementers and
@@ -119,9 +142,10 @@ silently switch providers after an infrastructure failure.
 
 For implementation or substantial investigation, write a frozen task contract
 using [the task contract](references/task-contract.md). Give each worker only the
-context needed for its role. A host may author the contract with the `leader`
-skill, whose brief format (open checks in the brief, withheld checks kept by
-the coordinator) matches this protocol's contract split.
+context needed for its role. The brief format in
+[brief-authoring.md](references/brief-authoring.md) (open checks in the brief,
+withheld checks kept by the coordinator) matches this protocol's contract
+split and is the usual way to author a Tier 2/3 dispatch.
 
 Across a run that must survive context loss, process restart, or handoff, keep
 the invariants, remaining work, and contracts in the repository rather than in

@@ -10,14 +10,12 @@ its scripts and references remain available.
 |---|---|---|
 | `branded-pptx` | bundled | Build decks from an outline on your own .pptx template, with layout verification |
 | `coding-agent` | adapter | Run Codex, Claude Code, TClaude, CodeBuddy Code, or OpenCode as monitored background workers, with a structured Codex mode returning a machine-readable result envelope |
-| `grill-with-docs` | protocol-only | Sharpen a plan or design through a relentless interview, producing a CONTEXT.md glossary and ADRs along the way |
-| `leader` | protocol-only | Turn a one-line idea into a self-contained task brief (≤4000 chars) that an execution agent can run unattended |
+| `coordinator` | protocol-only | The coordinating agent's control-plane playbook: grill vague requirements, freeze task briefs, and run multi-round verified loops with independent acceptance |
 | `office-mpp` | bundled | Read, analyze, export, create, and edit Microsoft Project or MSPDI files |
 | `openclaw-coding-agent` | adapter | Run supported coding CLIs through OpenClaw sessions and notifications |
 | `pdf-to-markdown` | protocol-only | Guide a host-provided PDF-to-Markdown workflow |
 | `search-docs` | adapter | Search and read the git-library documentation service |
 | `skill-evolve-lite` | protocol-only | Improve a Skill through train traces, validation gates, and rollback |
-| `verified-dev-loop` | protocol-only | Coordinate delegated implementation and evidence-based acceptance as a durable development loop |
 | `wechat-publish` | protocol-only | Guide a host-provided WeChat publishing workflow |
 
 The machine-readable list and delivery type are in
@@ -25,9 +23,12 @@ The machine-readable list and delivery type are in
 implementation, `adapter` includes an integration with an external CLI or API,
 and `protocol-only` requires the host project to provide the implementation.
 
-## Verified development loop
+## The coordinator playbook
 
-`verified-dev-loop` is a control-plane protocol for the coordinating agent. The
+`coordinator` is the control-plane playbook for the coordinating agent. It
+routes work by complexity — grill vague requirements (Tier 1), freeze clear
+work into self-contained task briefs (Tier 2), and run super-complex work as
+the verified loop below (Tier 3). In the loop, the
 coordinator owns scope, contracts, acceptance evidence, plan state, and stop
 decisions. Native subagent APIs or CLI adapters carry role-specific work and
 return artifacts; they do not decide what should pass. Implementers receive the
@@ -39,7 +40,7 @@ flowchart TB
     U[User<br/>judgment and external-effect gates]
 
     subgraph control[Control plane]
-        C[Coordinator<br/>verified-dev-loop]
+        C[Coordinator<br/>coordinator skill]
         S[(Role-visible repository state<br/>run · constraints · ledger · contracts)]
         P[(Host-private state<br/>withheld checks · raw logs)]
         S -->|read constraints, plan, and gates| C
@@ -72,7 +73,7 @@ flowchart TB
 The Skill remains `protocol-only`: it does not bundle a runner. A host can use
 the repository's `coding-agent` adapter, another monitored
 CLI adapter, or a native subagent API to implement the transport layer. A
-multi-round run defaults to `.verified-dev-loop/<run-id>/` for role-visible
+multi-round run defaults to `.coordinator/<run-id>/` for role-visible
 state; withheld checks and raw transport state stay outside the repository.
 Transport success, implementation delivery, and acceptance are three separate
 claims, and only the coordinator advances the run state.

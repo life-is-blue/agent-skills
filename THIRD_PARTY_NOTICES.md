@@ -19,20 +19,23 @@ snapshot exported from git-library. Its repository, source path, exact commit,
 SHA-256 digest, and upstream MIT license declaration are retained in
 `skills/search-docs/references/capability-provenance.json`.
 
-## leader
+## leader (merged into coordinator)
 
-`skills/leader` is adapted from the `leader` skill in
+`skills/coordinator/references/brief-authoring.md`, `brief-anatomy.md`, and
+`brief-style.md` are adapted from the `leader` skill in
 [KKKKhazix/khazix-skills](https://github.com/KKKKhazix/khazix-skills)
-(upstream LICENSE included in that repository). The only local change is the
-"接力" section linking it to `grill-with-docs` and `verified-dev-loop`.
+(upstream LICENSE included in that repository). Local changes: frontmatter
+removed, cross-skill handoff sections rewritten as tier pointers inside the
+`coordinator` skill.
 
-## grill-with-docs
+## grill-with-docs (merged into coordinator)
 
-`skills/grill-with-docs` is adapted from the `grill-with-docs`, `grilling`,
-and `domain-modeling` skills in
+`skills/coordinator/references/grilling.md`, `adr-format.md`, and
+`context-format.md` are adapted from the `grill-with-docs`, `grilling`, and
+`domain-modeling` skills in
 [mattpocock/skills](https://github.com/mattpocock/skills), licensed under the
 MIT License, Copyright (c) 2026 Matt Pocock. Upstream ships the interview and
 the documentation method as three interdependent skills; this repository
-merges them into one self-contained directory and drops the
+merges them into the `coordinator` skill's Tier 1 module and drops the
 `disable-model-invocation` frontmatter field, which this repository's skill
 contract does not support.

@@ -10,11 +10,7 @@
       "distribution": "adapter"
     },
     {
-      "name": "grill-with-docs",
-      "distribution": "protocol-only"
-    },
-    {
-      "name": "leader",
+      "name": "coordinator",
       "distribution": "protocol-only"
     },
     {
@@ -39,10 +35,6 @@
     },
     {
       "name": "skill-evolve-lite",
-      "distribution": "protocol-only"
-    },
-    {
-      "name": "verified-dev-loop",
       "distribution": "protocol-only"
     },
     {

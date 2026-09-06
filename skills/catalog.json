@@ -10,6 +10,14 @@
       "distribution": "adapter"
     },
     {
+      "name": "grill-with-docs",
+      "distribution": "protocol-only"
+    },
+    {
+      "name": "leader",
+      "distribution": "protocol-only"
+    },
+    {
       "name": "office-mpp",
       "distribution": "bundled"
     },

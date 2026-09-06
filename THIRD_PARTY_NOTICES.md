@@ -18,3 +18,21 @@ files.
 snapshot exported from git-library. Its repository, source path, exact commit,
 SHA-256 digest, and upstream MIT license declaration are retained in
 `skills/search-docs/references/capability-provenance.json`.
+
+## leader
+
+`skills/leader` is adapted from the `leader` skill in
+[KKKKhazix/khazix-skills](https://github.com/KKKKhazix/khazix-skills)
+(upstream LICENSE included in that repository). The only local change is the
+"接力" section linking it to `grill-with-docs` and `verified-dev-loop`.
+
+## grill-with-docs
+
+`skills/grill-with-docs` is adapted from the `grill-with-docs`, `grilling`,
+and `domain-modeling` skills in
+[mattpocock/skills](https://github.com/mattpocock/skills), licensed under the
+MIT License, Copyright (c) 2026 Matt Pocock. Upstream ships the interview and
+the documentation method as three interdependent skills; this repository
+merges them into one self-contained directory and drops the
+`disable-model-invocation` frontmatter field, which this repository's skill
+contract does not support.

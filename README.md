@@ -10,6 +10,8 @@ its scripts and references remain available.
 |---|---|---|
 | `branded-pptx` | bundled | Build decks from an outline on your own .pptx template, with layout verification |
 | `coding-agent` | adapter | Run Codex, Claude Code, TClaude, CodeBuddy Code, or OpenCode as monitored background workers, with a structured Codex mode returning a machine-readable result envelope |
+| `grill-with-docs` | protocol-only | Sharpen a plan or design through a relentless interview, producing a CONTEXT.md glossary and ADRs along the way |
+| `leader` | protocol-only | Turn a one-line idea into a self-contained task brief (≤4000 chars) that an execution agent can run unattended |
 | `office-mpp` | bundled | Read, analyze, export, create, and edit Microsoft Project or MSPDI files |
 | `openclaw-coding-agent` | adapter | Run supported coding CLIs through OpenClaw sessions and notifications |
 | `pdf-to-markdown` | protocol-only | Guide a host-provided PDF-to-Markdown workflow |

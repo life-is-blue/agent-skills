@@ -119,7 +119,9 @@ silently switch providers after an infrastructure failure.
 
 For implementation or substantial investigation, write a frozen task contract
 using [the task contract](references/task-contract.md). Give each worker only the
-context needed for its role.
+context needed for its role. A host may author the contract with the `leader`
+skill, whose brief format (open checks in the brief, withheld checks kept by
+the coordinator) matches this protocol's contract split.
 
 Across a run that must survive context loss, process restart, or handoff, keep
 the invariants, remaining work, and contracts in the repository rather than in

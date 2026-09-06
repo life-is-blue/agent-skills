@@ -218,7 +218,14 @@ not relay jobs or keep books by hand. It does three things and no more:
   failed attempt's artifact aside for evidence, and returns to the state the
   role dispatches from (implementer → ready, reviewer → implementing).
   Never hand-edit a malformed envelope into validity — `retry` and redispatch
-  keeps the ledger honest.
+  keeps the ledger honest. `blocked` is a holding state, not death: a user
+  decision resumes the goal through `human-gate`.
+- **Envelope schema is runner-injected** — `dispatch` appends the role's
+  envelope schema as the final prompt segment (`ENVELOPE_TAILS`), identical on
+  every dispatch. A schema embedded in a long contract loses to the worker's
+  attention budget; do not rely on contracts carrying it. The materialized
+  prompt (`contracts/<round>[-review].prompt.md`) is kept as the dispatch
+  record.
 - **Mechanical envelope validation** — `collect` checks the implementation
   and review envelopes against their contract shapes. A missing or malformed
   artifact is recorded as an **infrastructure failure**, never as an

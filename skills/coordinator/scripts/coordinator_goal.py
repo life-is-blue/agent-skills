@@ -25,9 +25,11 @@ EXIT_OK = 0
 EXIT_INPUT = 1
 EXIT_GUARD = 2
 
-TERMINAL_STATES = {"completed", "blocked"}
-# Role-driven transitions happen inside freeze/dispatch. This table covers the
-# coordinator-driven `advance` command only.
+TERMINAL_STATES = {"completed"}
+# blocked is a holding state (bound exhausted / no transport), not death:
+# a user decision can resume the goal via human-gate.
+# Role-driven transitions happen inside freeze/dispatch/retry. This table
+# covers the coordinator-driven `advance` command only.
 ADVANCE_TRANSITIONS = {
     "reviewing": {"ready", "repairing", "completed"},
     "human-gate": {"ready", "repairing", "completed"},
@@ -103,6 +105,47 @@ def load_json(path: Path, what: str) -> dict:
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+# Dispatch appends the role's envelope schema as the FINAL prompt segment.
+# Hard-won lesson (goal inv-recon-74 / verdict-taxonomy): a schema embedded in
+# a long contract loses to the worker's attention budget — the worker improvises
+# field names, three malformed envelopes in a row. The tail below is injected
+# by the runner itself so it is identical and last on every dispatch, no matter
+# what the contract says or what other schemas are visible nearby.
+ENVELOPE_TAILS = {
+    "implementer": """
+═══ 交付信封 schema（机械校验，优先级高于上文一切格式暗示）═══
+把你的交付 JSON 写到合同指定的 result 路径。字段严格如下，多一个少一个
+都算基础设施失败：
+{"schema_version":1,"role":"implementer","status":"completed"或"blocked",
+"round_id":"<本轮 id>","start_revision":"<开工时 git rev-parse HEAD 实测>",
+"candidate_revision":"<commit sha 或 uncommitted-working-tree>",
+"changed_files":[...],
+"commands":[{"command":"真实跑过的命令","exit_code":0},...],
+"unresolved":[...],"summary":"..."}
+注意：字段名是 round_id（不是 round）；status 只有 completed|blocked；
+命令证据放 commands 数组。不要模仿你在仓库里看到的任何其他 JSON 样式。
+""",
+    "reviewer": """
+═══ 裁决信封 schema（机械校验，优先级高于上文一切格式暗示）═══
+把裁决 JSON 写到合同指定的 review 路径。字段严格如下，多一个少一个都算
+基础设施失败：
+{"schema_version":1,"role":"reviewer","verdict":"go"或"no-go",
+"round_id":"<本轮 id>","start_revision":"...","candidate_revision":"...",
+"checks":[{"id":"...","kind":"open"或"withheld","required":true,
+"passed":true或false,"evidence":"命令+结果"},...],
+"blockers":[...],"spec_uncertainties":[...],"infrastructure_errors":[...]}
+注意：字段名是 round_id；verdict 只有 go|no-go。
+""",
+}
+
+
+def build_dispatch_prompt(role: str, contract: Path, round_id: str) -> str:
+    return (
+        contract.read_text(encoding="utf-8")
+        + ENVELOPE_TAILS[role].replace("<本轮 id>", round_id)
+    )
 
 
 class Goal:
@@ -279,6 +322,12 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
         fail(f"contract {contract} not found; freeze it first")
 
     runner = resolve_transport_dir(args.transport_dir)
+    # The prompt is contract + runner-injected envelope schema tail (see
+    # ENVELOPE_TAILS). Materialize the combined prompt for the transport.
+    prompt_file = goal.dir / "contracts" / f"{args.round}{suffix}.prompt.md"
+    atomic_write(
+        prompt_file, build_dispatch_prompt(args.role, contract, args.round)
+    )
     command = [
         "bash",
         str(runner),
@@ -288,7 +337,7 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
         "--workdir",
         str(workdir),
         "--prompt-file",
-        str(contract),
+        str(prompt_file),
         "--result-file",
         result_rel,
         "--json",

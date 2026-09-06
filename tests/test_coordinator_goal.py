@@ -417,3 +417,49 @@ def test_retry_guard_rejects_idle_states(tmp_path: Path):
     )
     assert proc.returncode == 2
     assert "cannot retry" in proc.stderr
+
+
+def test_dispatch_injects_envelope_tail(tmp_path: Path):
+    init_run(tmp_path)
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    run_goal(
+        "dispatch", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "implementer",
+        "--transport-dir", transport, artifact=IMPL_OK,
+    )
+    prompt = (tmp_path / ".coordinator" / "r1" / "contracts"
+              / "round-1.prompt.md").read_text()
+    assert "# frozen contract" in prompt          # contract text preserved
+    assert "机械校验" in prompt                     # tail injected
+    assert '"round_id":"round-1"' in prompt        # round id substituted
+    assert prompt.rindex("机械校验") > prompt.rindex("frozen contract")  # tail is last
+
+
+def test_blocked_resumes_via_human_gate_only(tmp_path: Path):
+    init_run(tmp_path)
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
+
+    parked = payload(run_goal(
+        "advance", "--workdir", tmp_path, "--goal-id", "r1", "--to", "blocked",
+        "--note", "bound exhausted pending user decision"))
+    assert parked["state"] == "blocked"
+
+    # blocked is holding, not death: human-gate resumes it
+    resumed = payload(run_goal(
+        "advance", "--workdir", tmp_path, "--goal-id", "r1", "--to", "human-gate",
+        "--note", "user decided"))
+    assert resumed["state"] == "human-gate"
+    back = payload(run_goal(
+        "advance", "--workdir", tmp_path, "--goal-id", "r1", "--to", "ready"))
+    assert back["state"] == "ready"
+
+    # but blocked cannot skip the human gate (re-park, then try the direct jump)
+    run_goal("advance", "--workdir", tmp_path, "--goal-id", "r1",
+             "--to", "blocked", "--note", "again")
+    illegal = run_goal("advance", "--workdir", tmp_path, "--goal-id", "r1",
+                       "--to", "ready", check=False)
+    assert illegal.returncode == 2
+    assert "not legal" in illegal.stderr

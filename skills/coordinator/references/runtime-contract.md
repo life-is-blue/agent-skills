@@ -17,7 +17,9 @@ Record one of these states in `goal.json`:
   the unresolved findings.
 - `human-gate`: progress requires a user decision or authorization.
 - `blocked`: the declared retry or cost bound is exhausted, or no eligible
-  transport can continue.
+  transport can continue. A holding state awaiting a user decision, not a
+  dead end: resume through `human-gate` (direct `blocked -> ready` is
+  refused so the decision is always on record).
 - `completed`: the controller reproduced the final gate and closed the ledger.
 
 The ordinary path is `establishing -> ready -> implementing -> reviewing`, then

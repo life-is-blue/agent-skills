@@ -96,9 +96,10 @@ a placeholder that always passes, and a stated capability may not match the
 installed one.
 
 For judgment calls, use a safe reversible default when it preserves the stated
-quality floor and scope. Under the repository's execution-authority rules, the
-choices worth a question in this Skill are direction, acceptance strictness,
-and risk. Ask again only when new evidence invalidates the
+quality floor and scope. Ask only when a missing choice would materially change
+the outcome and measurement cannot settle it; in this Skill the choices worth a
+question are direction, acceptance strictness, and risk. Consolidate into one
+round, and ask again only when new evidence invalidates the
 authorization or assumption being relied on.
 
 Otherwise decide, and disclose. List every call made on the user's behalf in one

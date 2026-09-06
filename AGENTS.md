@@ -81,6 +81,12 @@ change history; repository documents describe current behavior.
 - Create only resources the Skill uses. State dependencies, commands, inputs,
   outputs, side effects, and failure handling without claiming host-provided
   code is bundled.
+- Skill directories are distributed by copying or symlinking the directory
+  alone; repo-root files (this file included) do not travel with them.
+  Therefore a Skill must be self-contained: restate every behavioral rule it
+  relies on inside its own directory, in its own words. Cross-skill repetition
+  of a rule is the price of portability, not debt. Depending on a sibling
+  Skill is allowed only with an explicit install instruction in SKILL.md.
 - Update `skills/catalog.json` when adding, deleting, or renaming a Skill.
 - Classify delivery as `bundled`, `adapter`, or `protocol-only` according to the
   implementation actually present in the Skill directory.

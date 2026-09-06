@@ -461,6 +461,54 @@ def cmd_advance(args: argparse.Namespace) -> dict:
     }
 
 
+def cmd_retry(args: argparse.Namespace) -> dict:
+    """Infrastructure retry: reopen the current round after a transport-level
+    failure (missing/malformed envelope, stale-artifact refusal, dead worker).
+
+    This is deliberately NOT a repair: the candidate was never judged, so the
+    repair bound is not consumed. The role's resume state matches what
+    `dispatch` requires (implementer dispatches from ready, reviewer from
+    implementing).
+    """
+    goal = Goal(Path(args.workdir).resolve(), args.goal_id)
+    resume = {"implementer": "ready", "reviewer": "implementing"}
+    goal.require_state(
+        {"implementing"} if args.role == "implementer" else {"reviewing"},
+        f"retry a {args.role} dispatch",
+    )
+    # The transport refuses a result path that already exists (anti-stale).
+    # Set a failed attempt's artifact aside at the goal root so the redispatch
+    # is not blocked and the evidence survives.
+    sub = "deliveries" if args.role == "implementer" else "reviews"
+    artifact = goal.dir / sub / f"{args.round}.json"
+    aside = None
+    if artifact.is_file():
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        aside = goal.dir / f"{args.round}-{args.role}-set-aside-{stamp}.json"
+        artifact.rename(aside)
+    entry = goal.round_entry(args.round)
+    entry.setdefault("infra_retries", []).append(
+        {
+            "role": args.role,
+            "note": args.note,
+            "set_aside": aside.name if aside else None,
+            "at": now_iso(),
+        }
+    )
+    goal.set_state(resume[args.role])
+    goal.save()
+    return {
+        "command": "retry",
+        "goal_id": args.goal_id,
+        "round_id": args.round,
+        "role": args.role,
+        "state": goal.state,
+        "set_aside": aside.name if aside else None,
+        "repairs_used": goal.data.get("repairs_used"),
+        "errors": [],
+    }
+
+
 def cmd_archive(args: argparse.Namespace) -> dict:
     goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     skill_dir = Path(__file__).resolve().parents[1]
@@ -575,6 +623,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--note")
     p.set_defaults(func=cmd_advance)
+
+    p = sub.add_parser("retry")
+    common(p)
+    p.add_argument("--round", required=True)
+    p.add_argument("--role", choices=["implementer", "reviewer"], required=True)
+    p.add_argument(
+        "--note",
+        required=True,
+        help="the infrastructure cause being retried (recorded in the ledger)",
+    )
+    p.set_defaults(func=cmd_retry)
 
     p = sub.add_parser("archive")
     common(p)

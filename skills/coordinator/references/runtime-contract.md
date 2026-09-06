@@ -26,6 +26,14 @@ Infrastructure failure leaves the candidate undecided; it does not become an
 implementation rejection. Record the failure and retry or reroute only within
 the bound declared for this goal.
 
+**Infrastructure retry is not a repair.** A transport-level failure (missing or
+malformed envelope, stale-artifact refusal, dead worker) is retried with
+`coordinator_goal.py retry --role <role> --note <cause>`, which sets the failed
+artifact aside as evidence and returns to the role's dispatch state
+(implementer → `ready`, reviewer → `implementing`) without consuming the repair
+bound. The repair bound caps adjudicated rejections, not transport noise;
+conflating the two makes `repairs_used` unreadable as a signal.
+
 ## Public goal directory
 
 Unless the repository names another runtime-artifact location, use

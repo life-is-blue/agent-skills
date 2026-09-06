@@ -334,3 +334,86 @@ def test_human_gate_parks_and_resumes(tmp_path: Path):
         "advance", "--workdir", tmp_path, "--goal-id", "r1", "--to", "ready",
     ))
     assert resumed["state"] == "ready"
+
+
+def test_retry_implementer_preserves_repair_budget(tmp_path: Path):
+    init_run(tmp_path)  # repair_bound = 1
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+
+    # Malformed envelope: collect records an infrastructure failure and the
+    # artifact stays in place (the transport would refuse to overwrite it).
+    dispatch = run_goal(
+        "dispatch", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "implementer",
+        "--transport-dir", transport, raw_artifact='{"status": "complete"}',
+    )
+    assert payload(dispatch)["state"] == "implementing"
+    collected = run_goal(
+        "collect", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "implementer",
+    )
+    assert payload(collected)["outcome"] == "infrastructure-failure"
+
+    retried = payload(run_goal(
+        "retry", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "implementer",
+        "--note", "envelope status enum invalid",
+    ))
+    assert retried["state"] == "ready"
+    assert retried["repairs_used"] == 0  # infra retry must not burn the bound
+    assert retried["set_aside"] is not None
+
+    goal_dir = tmp_path / ".coordinator" / "r1"
+    assert not (goal_dir / "deliveries" / "round-1.json").exists()
+    assert (goal_dir / retried["set_aside"]).is_file()
+    ledger = json.loads((goal_dir / "ledger.json").read_text())
+    retries = ledger["rounds"]["round-1"]["infra_retries"]
+    assert retries[0]["note"] == "envelope status enum invalid"
+
+    # The reopened round can be redispatched and collected normally.
+    delivery = dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
+    assert delivery["outcome"] == "collected"
+    assert delivery["status"] == "completed"
+
+
+def test_retry_reviewer_returns_to_implementing(tmp_path: Path):
+    init_run(tmp_path)
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    freeze_round(tmp_path, transport, role="reviewer", name="review.md")
+    dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
+
+    run_goal(
+        "dispatch", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "reviewer",
+        "--transport-dir", transport, raw_artifact='{"verdict": "yes"}',
+    )
+    collected = run_goal(
+        "collect", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "reviewer",
+    )
+    assert payload(collected)["outcome"] == "infrastructure-failure"
+
+    retried = payload(run_goal(
+        "retry", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "reviewer",
+        "--note", "verdict envelope malformed",
+    ))
+    # reviewer dispatches from implementing, so retry resumes there
+    assert retried["state"] == "implementing"
+    review = dispatch_and_collect(tmp_path, transport, "reviewer", REVIEW_GO)
+    assert review["mechanical_go"] is True
+
+
+def test_retry_guard_rejects_idle_states(tmp_path: Path):
+    init_run(tmp_path)
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    proc = run_goal(
+        "retry", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "implementer",
+        "--note", "nothing in flight", check=False,
+    )
+    assert proc.returncode == 2
+    assert "cannot retry" in proc.stderr

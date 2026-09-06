@@ -211,6 +211,14 @@ not relay jobs or keep books by hand. It does three things and no more:
   reviewing), and `advance` (coordinator-driven moves) refuse illegal
   transitions. The repair bound is enforced mechanically: when it is
   exhausted, the only legal move is `blocked`.
+- **Infrastructure retry** — `retry` reopens a round after a transport-level
+  failure (missing or malformed envelope, stale-artifact refusal, dead
+  worker) without consuming the repair bound: the candidate was never judged,
+  so it is not a repair. It requires `--note` naming the cause, moves the
+  failed attempt's artifact aside for evidence, and returns to the state the
+  role dispatches from (implementer → ready, reviewer → implementing).
+  Never hand-edit a malformed envelope into validity — `retry` and redispatch
+  keeps the ledger honest.
 - **Mechanical envelope validation** — `collect` checks the implementation
   and review envelopes against their contract shapes. A missing or malformed
   artifact is recorded as an **infrastructure failure**, never as an

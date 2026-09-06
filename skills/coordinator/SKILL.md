@@ -22,7 +22,7 @@ coordinator and nothing else.
 
 Escalate tiers when evidence demands it: a Tier 1 interview that surfaces real
 risk feeds Tier 2/3; a Tier 2 brief that bounces more than the declared repair
-bound becomes a Tier 3 run. Tiers 1 and 2 are modules of the same control
+bound becomes a Tier 3 goal. Tiers 1 and 2 are modules of the same control
 plane as Tier 3, not separate products — a brief's 明卷/暗卷 are the loop's
 open/withheld checks.
 
@@ -34,10 +34,10 @@ open/withheld checks.
 | user | 领导 | The human; owns direction and external-effect authorization |
 | implementer | 执行者 | The role carrying out a frozen contract |
 | reviewer | 验收官 / acceptance agent | The independent evidence role |
-| run | — | One objective, tracked in `.coordinator/<run-id>/` |
-| round | 轮 | One contract → candidate → verdict cycle inside a run |
+| goal | run（旧称，已退役） | One objective with direction, bounds, and verifiable completion; tracked in `.coordinator/<goal-id>/` |
+| round | 轮 | One contract → candidate → verdict cycle inside a goal |
 | session / job | — | A transport-level worker process (coding-agent says session, codex_run says job) |
-| archive | 回执包 | Terminal receipt copy under `skills/coordinator/runs/`, gitignored |
+| archive | 回执包 | Terminal receipt copy under `skills/coordinator/goals/`, gitignored |
 
 ## The verified loop (Tier 3)
 
@@ -48,7 +48,7 @@ returns artifacts; it does not decide what should pass. Give implementers and
 reviewers only the context their roles require, not the coordinator's full
 context.
 
-For a run that spans rounds or coordinator contexts, read and apply
+For a goal that spans rounds or coordinator contexts, read and apply
 [the runtime contract](references/runtime-contract.md). It defines the lifecycle,
 portable state, transport boundary, and role envelopes. The coordinator is the
 only role allowed to advance that lifecycle.
@@ -75,7 +75,7 @@ then keep resolved answers in the host environment rather than in this Skill:
 
 Verify observable capabilities with the CLI's local `--help`. Ask one
 consolidated question only for unresolved role choices or permissions that
-materially affect the run. A minimal smoke on a network-backed CLI can reach
+materially affect the goal. A minimal smoke on a network-backed CLI can reach
 the provider and spend real quota before any task has been authorized, so
 disclose that cost and get the user's go-ahead before running it — never run a
 provider-reaching smoke silently during host setup. Read the matching
@@ -95,13 +95,13 @@ Do not ask for subscription balances. No provider exposes reliable telemetry, an
 the usage reported by one call describes that call alone. When a subscription
 should be favored or avoided for a while, take it as a run-time instruction.
 
-## Establish the run
+## Establish the goal
 
 Resolve by inspection or collect only when not observable:
 
 - the task, repository, starting revision, scope, and external side effects;
 - the required quality floor and machine-verifiable completion signals;
-- whether the user authorized a multi-provider run for this task.
+- whether the user authorized multi-provider execution for this task.
 
 Measure before asking. Run the commands, read the code, and record real baseline
 numbers, because a command named in a document may not exist, a lint step may be
@@ -161,17 +161,17 @@ context needed for its role. The brief format in
 withheld checks kept by the coordinator) matches this protocol's contract
 split and is the usual way to author a Tier 2/3 dispatch.
 
-Across a run that must survive context loss, process restart, or handoff, keep
+Across a goal that must survive context loss, process restart, or handoff, keep
 the invariants, remaining work, and contracts in the repository rather than in
 each prompt, and open every dispatch with a read-back of them. Do not create
-durable run-state files for a short run that can complete in the current
+durable state files for a short goal that can complete in the current
 session. Read
 [durable state between rounds](references/durable-state.md). A contract is
 bounded while the invariants accumulate, so restating them each round costs more
 of that bound and leaves the selection unchecked in the coordinator's context.
 Use the public and private state split in
 [the runtime contract](references/runtime-contract.md); never put withheld checks
-or credentials in the role-visible run directory.
+or credentials in the role-visible goal directory.
 
 Before dispatching, establish what will decide the outcome independently of the
 worker's own report: an external judge where a reference exists, and numeric
@@ -193,17 +193,17 @@ Every provider call must produce at least one of:
 - an independent review verdict with file or command evidence;
 - maintained documentation tied to current repository behavior.
 
-A call that cannot produce one of these does not belong in the run. Idle capacity
+A call that cannot produce one of these does not belong in the goal. Idle capacity
 costs nothing, while a round spent on work nobody needed costs the coordinator's
 attention, which is the resource that actually runs short.
 
-## Mechanism: coordinator_run.py
+## Mechanism: coordinator_goal.py
 
-`scripts/coordinator_run.py` executes the state machine from
+`scripts/coordinator_goal.py` executes the state machine from
 [the runtime contract](references/runtime-contract.md) so the coordinator does
 not relay jobs or keep books by hand. It does three things and no more:
 
-- **Bookkeeping** — `init` scaffolds `.coordinator/<run-id>/` (`run.json`,
+- **Bookkeeping** — `init` scaffolds `.coordinator/<goal-id>/` (`goal.json`,
   `ledger.json`, `constraints.md`, contract/delivery/review directories);
   `status` reports current state.
 - **Guarded transitions** — `freeze` (establishing/repairing → ready),
@@ -224,30 +224,30 @@ explicitly. A typical round:
 SKILL_DIR=/path/to/coordinator
 cd /path/to/worktree
 
-python3 "$SKILL_DIR/scripts/coordinator_run.py" init --run-id run-1 \
+python3 "$SKILL_DIR/scripts/coordinator_goal.py" init --goal-id goal-1 \
   --objective "..." --mode standard --repair-bound 3 --json
-python3 "$SKILL_DIR/scripts/coordinator_run.py" freeze --run-id run-1 \
+python3 "$SKILL_DIR/scripts/coordinator_goal.py" freeze --goal-id goal-1 \
   --round round-1 --contract /path/to/task-brief.md --json
-python3 "$SKILL_DIR/scripts/coordinator_run.py" freeze --run-id run-1 \
+python3 "$SKILL_DIR/scripts/coordinator_goal.py" freeze --goal-id goal-1 \
   --round round-1 --role reviewer --contract /path/to/review-brief.md --json
-python3 "$SKILL_DIR/scripts/coordinator_run.py" dispatch --run-id run-1 \
+python3 "$SKILL_DIR/scripts/coordinator_goal.py" dispatch --goal-id goal-1 \
   --round round-1 --role implementer --json
-python3 "$SKILL_DIR/scripts/coordinator_run.py" collect --run-id run-1 \
+python3 "$SKILL_DIR/scripts/coordinator_goal.py" collect --goal-id goal-1 \
   --round round-1 --role implementer --json
-python3 "$SKILL_DIR/scripts/coordinator_run.py" dispatch --run-id run-1 \
+python3 "$SKILL_DIR/scripts/coordinator_goal.py" dispatch --goal-id goal-1 \
   --round round-1 --role reviewer --json
-python3 "$SKILL_DIR/scripts/coordinator_run.py" collect --run-id run-1 \
+python3 "$SKILL_DIR/scripts/coordinator_goal.py" collect --goal-id goal-1 \
   --round round-1 --role reviewer --json
-python3 "$SKILL_DIR/scripts/coordinator_run.py" advance --run-id run-1 \
+python3 "$SKILL_DIR/scripts/coordinator_goal.py" advance --goal-id goal-1 \
   --to completed --note "gate reproduced" --json
 ```
 
 The transport defaults to the sibling `coding-agent` Skill; override with
 `--transport-dir` or `CODING_AGENT_DIR`. Withheld checks and raw transport
-logs still live in host-private state, outside the repository. When a run
-ends, `archive` copies the receipt bundle to `skills/coordinator/runs/<run-id>/`
+logs still live in host-private state, outside the repository. When a goal
+ends, `archive` copies the receipt bundle to `skills/coordinator/goals/<goal-id>/`
 (gitignored) — the long-term, traceable record; the worktree
-`.coordinator/<run-id>/` is per-run working state.
+`.coordinator/<goal-id>/` is per-run working state.
 
 ## Verify and stop
 

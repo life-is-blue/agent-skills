@@ -1,13 +1,13 @@
 # Runtime contract
 
-Use this contract when a run must survive a coordinator context reset or move
+Use this contract when a goal must survive a coordinator context reset or move
 between compatible hosts. The coordinator owns the state machine. A transport
 reports execution facts; an implementer reports a candidate; a reviewer reports
-evidence. None of those reports advances the run by itself.
+evidence. None of those reports advances the goal by itself.
 
 ## Coordinator states
 
-Record one of these states in `run.json`:
+Record one of these states in `goal.json`:
 
 - `establishing`: measure the baseline, settle decisions, and choose a mode.
 - `ready`: the next frozen contract and its acceptance evidence are complete.
@@ -24,15 +24,15 @@ The ordinary path is `establishing -> ready -> implementing -> reviewing`, then
 either `ready` for the next planned dispatch, `repairing`, or `completed`.
 Infrastructure failure leaves the candidate undecided; it does not become an
 implementation rejection. Record the failure and retry or reroute only within
-the bound declared for this run.
+the bound declared for this goal.
 
-## Public run directory
+## Public goal directory
 
 Unless the repository names another runtime-artifact location, use
-`.coordinator/<run-id>/` in the worktree:
+`.coordinator/<goal-id>/` in the worktree:
 
 ```text
-run.json
+goal.json
 constraints.md
 ledger.json
 contracts/<round-id>.md
@@ -40,7 +40,7 @@ deliveries/<round-id>.json
 reviews/<round-id>.json
 ```
 
-`run.json` records `schema_version`, `run_id`, objective, mode, state, starting
+`goal.json` records `schema_version`, `goal_id`, objective, mode, state, starting
 revision, current round, chosen transport, and update time. `ledger.json` records
 each bounded dispatch, dependencies, state, and the gates it established. Keep
 both as current state, not an event log.
@@ -48,19 +48,19 @@ both as current state, not an event log.
 These files are visible to roles that can read the worktree. Do not automatically
 commit them or edit `.gitignore`; follow the target repository's runtime-artifact
 policy. Put withheld checks and raw transport logs in the host state directory,
-keyed by the same run ID. Never copy credentials into either location.
+keyed by the same goal ID. Never copy credentials into either location.
 
 ## Artifact lifecycle
 
-The worktree run directory is **per-run working state**: it exists so roles can
-read contracts and constraints while the run is live, and it carries no
-long-term obligation. When a run reaches a terminal state, archive the receipt
-bundle (`run.json`, `ledger.json`, `constraints.md`, contracts, deliveries,
-reviews) with `coordinator_run.py archive`, which copies it to
-`skills/coordinator/runs/<run-id>/` — the skill's own directory, gitignored
+The worktree goal directory is **per-goal working state**: it exists so roles can
+read contracts and constraints while the goal is live, and it carries no
+long-term obligation. When a goal reaches a terminal state, archive the receipt
+bundle (`goal.json`, `ledger.json`, `constraints.md`, contracts, deliveries,
+reviews) with `coordinator_goal.py archive`, which copies it to
+`skills/coordinator/goals/<goal-id>/` — the skill's own directory, gitignored
 upstream. That archive is the long-term, traceable record and the raw material
 for later skill evolution; the worktree copy may then be cleaned up by the
-host's own policy. Run receipts never enter the target repository's history
+host's own policy. Goal receipts never enter the target repository's history
 unless that repository deliberately chooses otherwise.
 
 ## Transport conformance
@@ -76,7 +76,7 @@ A compatible transport can:
 
 Resume, background notifications, token usage, and provider-native structured
 output are optional capabilities. Probe the installed transport with local help
-and a minimal smoke, record its capabilities in `run.json`, and do not silently
+and a minimal smoke, record its capabilities in `goal.json`, and do not silently
 change provider or permissions after dispatch.
 
 Record whether the host preserves detached processes between tool calls. Use a
@@ -119,5 +119,5 @@ from optimistic prose in the log.
 The reviewer writes the public verdict envelope defined in
 [the review contract](review-contract.md), while full withheld inputs and outputs
 remain in private host state. Only after that verdict and the controller's own
-repository gate agree may the controller advance the ledger or mark the run
+repository gate agree may the controller advance the ledger or mark the goal
 complete.

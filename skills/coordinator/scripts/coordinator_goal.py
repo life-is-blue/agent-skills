@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Drive the coordinator runtime-contract state machine.
+"""Drive the coordinator state machine for one goal.
 
-The script owns bookkeeping (run.json / ledger.json), guarded transitions,
+The script owns bookkeeping (goal.json / ledger.json), guarded transitions,
 transport dispatch through the coding-agent Skill, and mechanical envelope
 validation. It never adjudicates: the coordinator reads the facts this script
 reports and calls `advance` explicitly. A `go` verdict from this script means
@@ -94,7 +94,7 @@ def atomic_write(path: Path, text: str) -> None:
 
 def load_json(path: Path, what: str) -> dict:
     if not path.is_file():
-        fail(f"{what} not found at {path}; run `init` first")
+        fail(f"{what} not found at {path}; use `init` first")
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
@@ -105,19 +105,19 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-class Run:
-    def __init__(self, workdir: Path, run_id: str):
-        if not run_id or "/" in run_id or run_id.startswith("."):
-            fail("run-id must be a plain path segment")
-        self.dir = workdir / ".coordinator" / run_id
-        self.run_path = self.dir / "run.json"
+class Goal:
+    def __init__(self, workdir: Path, goal_id: str):
+        if not goal_id or "/" in goal_id or goal_id.startswith("."):
+            fail("goal-id must be a plain path segment")
+        self.dir = workdir / ".coordinator" / goal_id
+        self.goal_path = self.dir / "goal.json"
         self.ledger_path = self.dir / "ledger.json"
-        self.run = load_json(self.run_path, "run.json")
+        self.data = load_json(self.goal_path, "goal.json")
         self.ledger = load_json(self.ledger_path, "ledger.json")
 
     @property
     def state(self) -> str:
-        return self.run["state"]
+        return self.data["state"]
 
     def require_state(self, allowed: set[str], action: str) -> None:
         if self.state not in allowed:
@@ -126,11 +126,11 @@ class Run:
             )
 
     def set_state(self, state: str) -> None:
-        self.run["state"] = state
-        self.run["updated_at"] = now_iso()
+        self.data["state"] = state
+        self.data["updated_at"] = now_iso()
 
     def save(self) -> None:
-        atomic_write(self.run_path, json.dumps(self.run, indent=2, sort_keys=True) + "\n")
+        atomic_write(self.goal_path, json.dumps(self.data, indent=2, sort_keys=True) + "\n")
         atomic_write(
             self.ledger_path, json.dumps(self.ledger, indent=2, sort_keys=True) + "\n"
         )
@@ -154,22 +154,22 @@ def resolve_transport_dir(explicit: str | None) -> Path:
     return runner
 
 
-def find_job(run: Run, round_id: str, role: str) -> dict:
-    for job in reversed(run.run.get("jobs", [])):
+def find_job(goal: Goal, round_id: str, role: str) -> dict:
+    for job in reversed(goal.data.get("jobs", [])):
         if job["round_id"] == round_id and job["role"] == role:
             return job
-    fail(f"no {role} dispatch recorded for {round_id}; run `dispatch` first")
+    fail(f"no {role} dispatch recorded for {round_id}; use `dispatch` first")
 
 
 def cmd_init(args: argparse.Namespace) -> dict:
     workdir = Path(args.workdir).resolve()
     if not workdir.is_dir():
         fail(f"workdir {workdir} does not exist")
-    run_dir = workdir / ".coordinator" / args.run_id
-    if run_dir.exists():
-        fail(f"run directory {run_dir} already exists; pick a new run-id")
+    goal_dir = workdir / ".coordinator" / args.goal_id
+    if goal_dir.exists():
+        fail(f"goal directory {goal_dir} already exists; pick a new goal-id")
     for sub in ("contracts", "deliveries", "reviews"):
-        (run_dir / sub).mkdir(parents=True)
+        (goal_dir / sub).mkdir(parents=True)
     revision = args.start_revision
     if not revision:
         try:
@@ -182,9 +182,9 @@ def cmd_init(args: argparse.Namespace) -> dict:
             ).stdout.strip()
         except (subprocess.CalledProcessError, FileNotFoundError):
             revision = None
-    run = {
+    goal_record = {
         "schema_version": SCHEMA_VERSION,
-        "run_id": args.run_id,
+        "goal_id": args.goal_id,
         "objective": args.objective,
         "mode": args.mode,
         "state": "establishing",
@@ -197,34 +197,34 @@ def cmd_init(args: argparse.Namespace) -> dict:
         "jobs": [],
         "updated_at": now_iso(),
     }
-    ledger = {"schema_version": SCHEMA_VERSION, "run_id": args.run_id, "rounds": {}}
-    atomic_write(run_dir / "run.json", json.dumps(run, indent=2, sort_keys=True) + "\n")
+    ledger = {"schema_version": SCHEMA_VERSION, "goal_id": args.goal_id, "rounds": {}}
+    atomic_write(goal_dir / "goal.json", json.dumps(goal_record, indent=2, sort_keys=True) + "\n")
     atomic_write(
-        run_dir / "ledger.json", json.dumps(ledger, indent=2, sort_keys=True) + "\n"
+        goal_dir / "ledger.json", json.dumps(ledger, indent=2, sort_keys=True) + "\n"
     )
-    (run_dir / "constraints.md").write_text(
-        "# Constraints\n\nInvariants, scope, and gates for this run.\n",
+    (goal_dir / "constraints.md").write_text(
+        "# Constraints\n\nInvariants, scope, and gates for this goal.\n",
         encoding="utf-8",
     )
     return {
         "command": "init",
-        "run_id": args.run_id,
+        "goal_id": args.goal_id,
         "state": "establishing",
-        "run_dir": str(run_dir),
+        "goal_dir": str(goal_dir),
         "start_revision": revision,
         "errors": [],
     }
 
 
 def cmd_freeze(args: argparse.Namespace) -> dict:
-    run = Run(Path(args.workdir).resolve(), args.run_id)
+    goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     if args.role == "implementer":
-        # An implementer freeze is the go signal: it advances the run.
-        run.require_state({"establishing", "repairing"}, "freeze a contract")
+        # An implementer freeze is the go signal: it advances the goal.
+        goal.require_state({"establishing", "repairing"}, "freeze a contract")
     else:
         # A review contract is bookkeeping prepared around the dispatch; it
         # must never move the state machine backwards or forwards.
-        run.require_state(
+        goal.require_state(
             {"establishing", "ready", "implementing", "repairing"},
             "freeze a review contract",
         )
@@ -232,49 +232,49 @@ def cmd_freeze(args: argparse.Namespace) -> dict:
     if not source.is_file():
         fail(f"contract file {source} not found")
     suffix = "-review" if args.role == "reviewer" else ""
-    target = run.dir / "contracts" / f"{args.round}{suffix}.md"
+    target = goal.dir / "contracts" / f"{args.round}{suffix}.md"
     target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-    entry = run.round_entry(args.round)
+    entry = goal.round_entry(args.round)
     key = "review_contract" if args.role == "reviewer" else "contract"
     entry[key] = {"path": str(target), "sha256": sha256_file(target)}
     if args.role == "implementer":
-        run.run["current_round"] = args.round
-        run.set_state("ready")
-    run.save()
+        goal.data["current_round"] = args.round
+        goal.set_state("ready")
+    goal.save()
     return {
         "command": "freeze",
-        "run_id": args.run_id,
+        "goal_id": args.goal_id,
         "round_id": args.round,
         "role": args.role,
-        "state": run.state,
+        "state": goal.state,
         "contract_sha256": entry[key]["sha256"],
         "errors": [],
     }
 
 
 def cmd_dispatch(args: argparse.Namespace) -> dict:
-    run = Run(Path(args.workdir).resolve(), args.run_id)
+    goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     workdir = Path(args.workdir).resolve()
     if args.role == "implementer":
-        run.require_state({"ready"}, "dispatch an implementer")
-        if run.run.get("current_round") != args.round:
+        goal.require_state({"ready"}, "dispatch an implementer")
+        if goal.data.get("current_round") != args.round:
             fail(
-                f"current round is {run.run.get('current_round')!r}, "
+                f"current round is {goal.data.get('current_round')!r}, "
                 f"not {args.round!r}; freeze the implementer contract first"
             )
-        result_rel = f".coordinator/{args.run_id}/deliveries/{args.round}.json"
+        result_rel = f".coordinator/{args.goal_id}/deliveries/{args.round}.json"
     else:
-        run.require_state({"implementing"}, "dispatch a reviewer")
-        entry = run.round_entry(args.round)
+        goal.require_state({"implementing"}, "dispatch a reviewer")
+        entry = goal.round_entry(args.round)
         delivery = entry.get("implementer", {})
         if delivery.get("outcome") != "collected":
             fail(
                 f"no collected implementer delivery for {args.round}; "
-                "run `collect --role implementer` first"
+                "use `collect --role implementer` first"
             )
-        result_rel = f".coordinator/{args.run_id}/reviews/{args.round}.json"
+        result_rel = f".coordinator/{args.goal_id}/reviews/{args.round}.json"
     suffix = "-review" if args.role == "reviewer" else ""
-    contract = run.dir / "contracts" / f"{args.round}{suffix}.md"
+    contract = goal.dir / "contracts" / f"{args.round}{suffix}.md"
     if not contract.is_file():
         fail(f"contract {contract} not found; freeze it first")
 
@@ -321,13 +321,13 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
         "worker_exit_code": envelope.get("worker_exit_code"),
         "result_artifact": envelope.get("result_artifact", {}).get("status"),
     }
-    run.run.setdefault("jobs", []).append(job)
-    run.set_state("implementing" if args.role == "implementer" else "reviewing")
-    run.save()
+    goal.data.setdefault("jobs", []).append(job)
+    goal.set_state("implementing" if args.role == "implementer" else "reviewing")
+    goal.save()
     return {
         "command": "dispatch",
-        "run_id": args.run_id,
-        "state": run.state,
+        "goal_id": args.goal_id,
+        "state": goal.state,
         "job": job,
         "errors": envelope.get("errors", []),
     }
@@ -374,15 +374,15 @@ def mechanical_go(payload: dict) -> bool:
 
 
 def cmd_collect(args: argparse.Namespace) -> dict:
-    run = Run(Path(args.workdir).resolve(), args.run_id)
-    job = find_job(run, args.round, args.role)
+    goal = Goal(Path(args.workdir).resolve(), args.goal_id)
+    job = find_job(goal, args.round, args.role)
     rel = (
         f"deliveries/{args.round}.json"
         if args.role == "implementer"
         else f"reviews/{args.round}.json"
     )
-    artifact = run.dir / rel
-    entry = run.round_entry(args.round)
+    artifact = goal.dir / rel
+    entry = goal.round_entry(args.round)
     outcome: dict
     if not artifact.is_file():
         outcome = {
@@ -406,86 +406,86 @@ def cmd_collect(args: argparse.Namespace) -> dict:
                 outcome["verdict"] = payload["verdict"]
                 outcome["mechanical_go"] = mechanical_go(payload)
     entry[args.role] = {**outcome, "job": job, "collected_at": now_iso()}
-    run.save()
+    goal.save()
     return {
         "command": "collect",
-        "run_id": args.run_id,
+        "goal_id": args.goal_id,
         "round_id": args.round,
         "role": args.role,
-        "state": run.state,
+        "state": goal.state,
         **outcome,
         "errors": [] if outcome["outcome"] == "collected" else [outcome["detail"]],
     }
 
 
 def cmd_advance(args: argparse.Namespace) -> dict:
-    run = Run(Path(args.workdir).resolve(), args.run_id)
-    current = run.state
+    goal = Goal(Path(args.workdir).resolve(), args.goal_id)
+    current = goal.state
     target = args.to
     if current in TERMINAL_STATES:
-        raise GuardError(f"run is already {current}; no further transitions")
+        raise GuardError(f"goal is already {current}; no further transitions")
     if target in HOLDING_STATES:
         if target == "human-gate":
-            run.run["resume_state"] = current
+            goal.data["resume_state"] = current
     else:
         allowed = ADVANCE_TRANSITIONS.get(current, set())
         if target not in allowed:
             raise GuardError(f"transition {current} -> {target} is not legal")
         if target == "repairing":
-            used = run.run.get("repairs_used", 0) + 1
-            bound = run.run.get("repair_bound")
+            used = goal.data.get("repairs_used", 0) + 1
+            bound = goal.data.get("repair_bound")
             if bound is not None and used > bound:
                 raise GuardError(
                     f"repair bound {bound} exhausted; advance to blocked instead"
                 )
-            run.run["repairs_used"] = used
+            goal.data["repairs_used"] = used
         if target == "completed":
-            round_id = run.run.get("current_round")
-            review = run.round_entry(round_id).get("reviewer", {}) if round_id else {}
+            round_id = goal.data.get("current_round")
+            review = goal.round_entry(round_id).get("reviewer", {}) if round_id else {}
             if not review.get("mechanical_go"):
                 raise GuardError(
                     "cannot complete: no collected reviewer verdict with a "
                     "mechanical go on the current round"
                 )
-    run.set_state(target)
+    goal.set_state(target)
     if args.note:
-        run.run["last_note"] = args.note
-    run.save()
+        goal.data["last_note"] = args.note
+    goal.save()
     return {
         "command": "advance",
-        "run_id": args.run_id,
+        "goal_id": args.goal_id,
         "from": current,
-        "state": run.state,
-        "repairs_used": run.run.get("repairs_used"),
+        "state": goal.state,
+        "repairs_used": goal.data.get("repairs_used"),
         "errors": [],
     }
 
 
 def cmd_archive(args: argparse.Namespace) -> dict:
-    run = Run(Path(args.workdir).resolve(), args.run_id)
+    goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     skill_dir = Path(__file__).resolve().parents[1]
-    sink = skill_dir / "runs" / args.run_id
+    sink = skill_dir / "goals" / args.goal_id
     if sink.exists() and not args.force:
         fail(f"archive {sink} already exists; pass --force to overwrite")
     sink.mkdir(parents=True, exist_ok=True)
     files = []
-    for name in ("run.json", "ledger.json", "constraints.md"):
-        source = run.dir / name
+    for name in ("goal.json", "ledger.json", "constraints.md"):
+        source = goal.dir / name
         if source.is_file():
             (sink / name).write_bytes(source.read_bytes())
             files.append(name)
     for sub in ("contracts", "deliveries", "reviews"):
-        for source in sorted((run.dir / sub).glob("*")):
+        for source in sorted((goal.dir / sub).glob("*")):
             if source.is_file():
                 target_dir = sink / sub
                 target_dir.mkdir(exist_ok=True)
                 (target_dir / source.name).write_bytes(source.read_bytes())
                 files.append(f"{sub}/{source.name}")
     meta = {
-        "run_id": args.run_id,
-        "state_at_archive": run.state,
+        "goal_id": args.goal_id,
+        "state_at_archive": goal.state,
         "archived_at": now_iso(),
-        "source": str(run.dir),
+        "source": str(goal.dir),
         "files": files,
     }
     atomic_write(
@@ -493,8 +493,8 @@ def cmd_archive(args: argparse.Namespace) -> dict:
     )
     return {
         "command": "archive",
-        "run_id": args.run_id,
-        "state": run.state,
+        "goal_id": args.goal_id,
+        "state": goal.state,
         "archived_to": str(sink),
         "files": files,
         "errors": [],
@@ -502,16 +502,16 @@ def cmd_archive(args: argparse.Namespace) -> dict:
 
 
 def cmd_status(args: argparse.Namespace) -> dict:
-    run = Run(Path(args.workdir).resolve(), args.run_id)
+    goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     return {
         "command": "status",
-        "run_id": args.run_id,
-        "state": run.state,
-        "current_round": run.run.get("current_round"),
-        "repairs_used": run.run.get("repairs_used"),
-        "repair_bound": run.run.get("repair_bound"),
-        "jobs": run.run.get("jobs", []),
-        "rounds": run.ledger.get("rounds", {}),
+        "goal_id": args.goal_id,
+        "state": goal.state,
+        "current_round": goal.data.get("current_round"),
+        "repairs_used": goal.data.get("repairs_used"),
+        "repair_bound": goal.data.get("repair_bound"),
+        "jobs": goal.data.get("jobs", []),
+        "rounds": goal.ledger.get("rounds", {}),
         "errors": [],
     }
 
@@ -525,18 +525,18 @@ def transport_env(value: str) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="coordinator_run.py")
+    parser = argparse.ArgumentParser(prog="coordinator_goal.py")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    def common(p: argparse.ArgumentParser, run_id=True) -> None:
+    def common(p: argparse.ArgumentParser, goal_id=True) -> None:
         p.add_argument("--workdir", default=".")
-        if run_id:
-            p.add_argument("--run-id", required=True)
+        if goal_id:
+            p.add_argument("--goal-id", required=True)
         p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("init")
-    common(p, run_id=False)
-    p.add_argument("--run-id", required=True)
+    common(p, goal_id=False)
+    p.add_argument("--goal-id", required=True)
     p.add_argument("--objective", required=True)
     p.add_argument("--mode", default="standard")
     p.add_argument("--start-revision")

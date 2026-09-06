@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNNER = ROOT / "skills" / "coordinator" / "scripts" / "coordinator_run.py"
+RUNNER = ROOT / "skills" / "coordinator" / "scripts" / "coordinator_goal.py"
 
 FAKE_TRANSPORT = r"""#!/usr/bin/env bash
 set -u
@@ -79,7 +79,7 @@ def make_transport(tmp_path: Path) -> Path:
     return transport
 
 
-def run_coordinator(*args: object, artifact: dict | None = None,
+def run_goal(*args: object, artifact: dict | None = None,
                     raw_artifact: str | None = None,
                     check: bool = True) -> subprocess.CompletedProcess:
     env = os.environ.copy()
@@ -107,8 +107,8 @@ def payload(proc: subprocess.CompletedProcess) -> dict:
 
 
 def init_run(tmp_path: Path, repair_bound: int = 1) -> None:
-    run_coordinator(
-        "init", "--workdir", tmp_path, "--run-id", "r1",
+    run_goal(
+        "init", "--workdir", tmp_path, "--goal-id", "r1",
         "--objective", "fixture objective", "--repair-bound", repair_bound,
     )
 
@@ -117,8 +117,8 @@ def freeze_round(tmp_path: Path, transport: Path, role: str = "implementer",
                  name: str = "contract.md") -> Path:
     contract = tmp_path / name
     contract.write_text("# frozen contract\n", encoding="utf-8")
-    run_coordinator(
-        "freeze", "--workdir", tmp_path, "--run-id", "r1",
+    run_goal(
+        "freeze", "--workdir", tmp_path, "--goal-id", "r1",
         "--round", "round-1", "--role", role, "--contract", contract,
     )
     return contract
@@ -126,13 +126,13 @@ def freeze_round(tmp_path: Path, transport: Path, role: str = "implementer",
 
 def dispatch_and_collect(tmp_path: Path, transport: Path, role: str,
                          artifact: dict | None) -> dict:
-    dispatch = run_coordinator(
-        "dispatch", "--workdir", tmp_path, "--run-id", "r1",
+    dispatch = run_goal(
+        "dispatch", "--workdir", tmp_path, "--goal-id", "r1",
         "--round", "round-1", "--role", role,
         "--transport-dir", transport, artifact=artifact,
     )
-    collected = run_coordinator(
-        "collect", "--workdir", tmp_path, "--run-id", "r1",
+    collected = run_goal(
+        "collect", "--workdir", tmp_path, "--goal-id", "r1",
         "--round", "round-1", "--role", role,
     )
     return payload(collected)
@@ -141,10 +141,10 @@ def dispatch_and_collect(tmp_path: Path, transport: Path, role: str,
 def test_init_creates_run_directory(tmp_path: Path):
     init_run(tmp_path)
     run_dir = tmp_path / ".coordinator" / "r1"
-    assert (run_dir / "run.json").is_file()
+    assert (run_dir / "goal.json").is_file()
     assert (run_dir / "ledger.json").is_file()
     assert (run_dir / "constraints.md").is_file()
-    state = json.loads((run_dir / "run.json").read_text())
+    state = json.loads((run_dir / "goal.json").read_text())
     assert state["state"] == "establishing"
     assert state["repair_bound"] == 1
 
@@ -153,11 +153,11 @@ def test_freeze_moves_establishing_to_ready(tmp_path: Path):
     init_run(tmp_path)
     transport = make_transport(tmp_path)
     freeze_round(tmp_path, transport)
-    status = payload(run_coordinator("status", "--workdir", tmp_path,
-                                     "--run-id", "r1"))
+    status = payload(run_goal("status", "--workdir", tmp_path,
+                                     "--goal-id", "r1"))
     assert status["state"] == "ready"
-    refreeze = run_coordinator(
-        "freeze", "--workdir", tmp_path, "--run-id", "r1",
+    refreeze = run_goal(
+        "freeze", "--workdir", tmp_path, "--goal-id", "r1",
         "--round", "round-1", "--contract", tmp_path / "contract.md",
         check=False,
     )
@@ -168,8 +168,8 @@ def test_freeze_moves_establishing_to_ready(tmp_path: Path):
 def test_dispatch_guard_requires_ready(tmp_path: Path):
     init_run(tmp_path)
     transport = make_transport(tmp_path)
-    proc = run_coordinator(
-        "dispatch", "--workdir", tmp_path, "--run-id", "r1",
+    proc = run_goal(
+        "dispatch", "--workdir", tmp_path, "--goal-id", "r1",
         "--round", "round-1", "--role", "implementer",
         "--transport-dir", transport, check=False,
     )
@@ -191,12 +191,12 @@ def test_full_cycle_reaches_completed(tmp_path: Path):
     assert review["outcome"] == "collected"
     assert review["mechanical_go"] is True
 
-    advanced = payload(run_coordinator(
-        "advance", "--workdir", tmp_path, "--run-id", "r1",
+    advanced = payload(run_goal(
+        "advance", "--workdir", tmp_path, "--goal-id", "r1",
         "--to", "completed", "--note", "gate reproduced",
     ))
     assert advanced["state"] == "completed"
-    again = run_coordinator("advance", "--workdir", tmp_path, "--run-id", "r1",
+    again = run_goal("advance", "--workdir", tmp_path, "--goal-id", "r1",
                             "--to", "ready", check=False)
     assert again.returncode == 2
 
@@ -205,13 +205,13 @@ def test_missing_artifact_is_infrastructure_failure(tmp_path: Path):
     init_run(tmp_path)
     transport = make_transport(tmp_path)
     freeze_round(tmp_path, transport)
-    run_coordinator(
-        "dispatch", "--workdir", tmp_path, "--run-id", "r1",
+    run_goal(
+        "dispatch", "--workdir", tmp_path, "--goal-id", "r1",
         "--round", "round-1", "--role", "implementer",
         "--transport-dir", transport,
     )
-    collected = payload(run_coordinator(
-        "collect", "--workdir", tmp_path, "--run-id", "r1",
+    collected = payload(run_goal(
+        "collect", "--workdir", tmp_path, "--goal-id", "r1",
         "--round", "round-1", "--role", "implementer",
     ))
     assert collected["outcome"] == "infrastructure-failure"
@@ -231,8 +231,8 @@ def test_malformed_envelope_is_infrastructure_failure(tmp_path: Path):
         json.dumps({"role": "implementer", "status": "completed"}),
         encoding="utf-8",
     )
-    recollected = payload(run_coordinator(
-        "collect", "--workdir", tmp_path, "--run-id", "r1",
+    recollected = payload(run_goal(
+        "collect", "--workdir", tmp_path, "--goal-id", "r1",
         "--round", "round-1", "--role", "implementer",
     ))
     assert recollected["outcome"] == "infrastructure-failure"
@@ -248,8 +248,8 @@ def test_no_go_repair_then_bound_forces_blocked(tmp_path: Path):
     review = dispatch_and_collect(tmp_path, transport, "reviewer", REVIEW_NO_GO)
     assert review["mechanical_go"] is False
 
-    repairing = payload(run_coordinator(
-        "advance", "--workdir", tmp_path, "--run-id", "r1", "--to", "repairing",
+    repairing = payload(run_goal(
+        "advance", "--workdir", tmp_path, "--goal-id", "r1", "--to", "repairing",
     ))
     assert repairing["state"] == "repairing"
     assert repairing["repairs_used"] == 1
@@ -257,15 +257,15 @@ def test_no_go_repair_then_bound_forces_blocked(tmp_path: Path):
     freeze_round(tmp_path, transport, name="contract2.md")
     dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
     dispatch_and_collect(tmp_path, transport, "reviewer", REVIEW_NO_GO)
-    exhausted = run_coordinator(
-        "advance", "--workdir", tmp_path, "--run-id", "r1",
+    exhausted = run_goal(
+        "advance", "--workdir", tmp_path, "--goal-id", "r1",
         "--to", "repairing", check=False,
     )
     assert exhausted.returncode == 2
     assert "repair bound 1 exhausted" in exhausted.stderr
 
-    blocked = payload(run_coordinator(
-        "advance", "--workdir", tmp_path, "--run-id", "r1", "--to", "blocked",
+    blocked = payload(run_goal(
+        "advance", "--workdir", tmp_path, "--goal-id", "r1", "--to", "blocked",
     ))
     assert blocked["state"] == "blocked"
 
@@ -277,8 +277,8 @@ def test_completed_requires_mechanical_go(tmp_path: Path):
     freeze_round(tmp_path, transport, role="reviewer", name="review.md")
     dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
     dispatch_and_collect(tmp_path, transport, "reviewer", REVIEW_NO_GO)
-    proc = run_coordinator(
-        "advance", "--workdir", tmp_path, "--run-id", "r1",
+    proc = run_goal(
+        "advance", "--workdir", tmp_path, "--goal-id", "r1",
         "--to", "completed", check=False,
     )
     assert proc.returncode == 2
@@ -292,14 +292,14 @@ def test_archive_copies_receipt_bundle_to_skill_runs(tmp_path: Path):
     freeze_round(tmp_path, transport, role="reviewer", name="review.md")
     dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
     dispatch_and_collect(tmp_path, transport, "reviewer", REVIEW_GO)
-    run_coordinator("advance", "--workdir", tmp_path, "--run-id", "r1",
+    run_goal("advance", "--workdir", tmp_path, "--goal-id", "r1",
                     "--to", "completed")
 
-    archived = payload(run_coordinator("archive", "--workdir", tmp_path,
-                                       "--run-id", "r1"))
+    archived = payload(run_goal("archive", "--workdir", tmp_path,
+                                       "--goal-id", "r1"))
     sink = Path(archived["archived_to"])
-    assert sink.parent == (ROOT / "skills" / "coordinator" / "runs")
-    assert (sink / "run.json").is_file()
+    assert sink.parent == (ROOT / "skills" / "coordinator" / "goals")
+    assert (sink / "goal.json").is_file()
     assert (sink / "ledger.json").is_file()
     assert (sink / "contracts" / "round-1.md").is_file()
     assert (sink / "deliveries" / "round-1.json").is_file()
@@ -307,10 +307,10 @@ def test_archive_copies_receipt_bundle_to_skill_runs(tmp_path: Path):
     meta = json.loads((sink / "archive-meta.json").read_text())
     assert meta["state_at_archive"] == "completed"
 
-    repeat = run_coordinator("archive", "--workdir", tmp_path, "--run-id", "r1",
+    repeat = run_goal("archive", "--workdir", tmp_path, "--goal-id", "r1",
                              check=False)
     assert repeat.returncode != 0
-    forced = run_coordinator("archive", "--workdir", tmp_path, "--run-id", "r1",
+    forced = run_goal("archive", "--workdir", tmp_path, "--goal-id", "r1",
                              "--force")
     assert payload(forced)["state"] == "completed"
     import shutil
@@ -321,16 +321,16 @@ def test_human_gate_parks_and_resumes(tmp_path: Path):
     init_run(tmp_path)
     transport = make_transport(tmp_path)
     freeze_round(tmp_path, transport)
-    parked = payload(run_coordinator(
-        "advance", "--workdir", tmp_path, "--run-id", "r1",
+    parked = payload(run_goal(
+        "advance", "--workdir", tmp_path, "--goal-id", "r1",
         "--to", "human-gate", "--note", "need scope decision",
     ))
     assert parked["state"] == "human-gate"
     state = json.loads(
-        (tmp_path / ".coordinator" / "r1" / "run.json").read_text()
+        (tmp_path / ".coordinator" / "r1" / "goal.json").read_text()
     )
     assert state["resume_state"] == "ready"
-    resumed = payload(run_coordinator(
-        "advance", "--workdir", tmp_path, "--run-id", "r1", "--to", "ready",
+    resumed = payload(run_goal(
+        "advance", "--workdir", tmp_path, "--goal-id", "r1", "--to", "ready",
     ))
     assert resumed["state"] == "ready"

@@ -10,4 +10,4 @@ __pycache__/
 
 # Skill runtime archives: long-term run receipts live beside the skill,
 # never in git history.
-skills/*/runs/
+skills/*/goals/

@@ -73,7 +73,7 @@ flowchart TB
 The Skill remains `protocol-only`: it does not bundle a runner. A host can use
 the repository's `coding-agent` adapter, another monitored
 CLI adapter, or a native subagent API to implement the transport layer. A
-multi-round run defaults to `.coordinator/<run-id>/` for role-visible
+multi-round run defaults to `.coordinator/<goal-id>/` for role-visible
 state; withheld checks and raw transport state stay outside the repository.
 Transport success, implementation delivery, and acceptance are three separate
 claims, and only the coordinator advances the run state.

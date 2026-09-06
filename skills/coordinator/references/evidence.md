@@ -102,5 +102,5 @@ background behavior, and exit semantics cannot safely be assumed uniform.
   outside this Skill's scope; the protocol assumes a host runner exists.
 - It does not provide reliable remaining-quota telemetry for any subscription.
 
-Use run receipts from new projects to test these rules across fast, standard,
+Use goal receipts from new projects to test these rules across fast, standard,
 and deep modes before claiming general throughput improvement.

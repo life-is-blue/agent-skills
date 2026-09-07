@@ -60,6 +60,14 @@ commit them or edit `.gitignore`; follow the target repository's runtime-artifac
 policy. Put withheld checks and raw transport logs in the host state directory,
 keyed by the same goal ID. Never copy credentials into either location.
 
+Reviewer contracts and their runner-materialized prompts use host-private state
+under `$XDG_STATE_HOME/coordinator/<goal-id>/contracts/` (or
+`~/.local/state/coordinator/` when XDG state is unset). Set
+`COORDINATOR_STATE_DIR` to replace the coordinator state root. The public ledger
+records only the reviewer contract SHA-256 and `private: true`, never its path.
+Dispatch reads private state first and falls back to a legacy reviewer contract
+in the public goal directory only when the private file is absent.
+
 ## Artifact lifecycle
 
 The worktree goal directory is **per-goal working state**: it exists so roles can
@@ -68,7 +76,9 @@ long-term obligation. When a goal reaches a terminal state, archive the receipt
 bundle (`goal.json`, `ledger.json`, `constraints.md`, contracts, deliveries,
 reviews) with `coordinator_goal.py archive`, which copies it to
 `skills/coordinator/goals/<goal-id>/` — the skill's own directory, gitignored
-upstream. That archive is the long-term, traceable record and the raw material
+upstream. At closeout it also copies private reviewer contracts and prompts into
+the receipt bundle's `contracts/` directory, where withheld checks are
+declassified. That archive is the long-term, traceable record and the raw material
 for later skill evolution; the worktree copy may then be cleaned up by the
 host's own policy. Goal receipts never enter the target repository's history
 unless that repository deliberately chooses otherwise.

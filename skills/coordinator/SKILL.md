@@ -230,6 +230,9 @@ not relay jobs or keep books by hand. It does three things and no more:
   and review envelopes against their contract shapes. A missing or malformed
   artifact is recorded as an **infrastructure failure**, never as an
   implementation rejection.
+- **Reviewer material is host-private** — `freeze` and `dispatch` keep reviewer
+  contracts and materialized prompts under the host state directory; `archive`
+  declassifies them into the terminal receipt bundle.
 
 It never adjudicates. `collect` reports facts (verdict, mechanical go shape,
 infrastructure failures); the coordinator weighs them and calls `advance`

@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -81,6 +82,7 @@ def make_transport(tmp_path: Path) -> Path:
 
 def run_goal(*args: object, artifact: dict | None = None,
                     raw_artifact: str | None = None,
+                    state_dir: Path | None = None,
                     check: bool = True) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     if artifact is not None or raw_artifact is not None:
@@ -91,6 +93,11 @@ def run_goal(*args: object, artifact: dict | None = None,
         env["FAKE_ARTIFACT_FILE"] = str(artifact_file)
     else:
         env.pop("FAKE_ARTIFACT_FILE", None)
+    if state_dir is None:
+        values = [str(arg) for arg in args]
+        workdir = Path(values[values.index("--workdir") + 1]).resolve()
+        state_dir = workdir.parent / f".{workdir.name}-coordinator-state"
+    env["COORDINATOR_STATE_DIR"] = str(state_dir)
     proc = subprocess.run(
         [sys.executable, str(RUNNER), *(str(a) for a in args), "--json"],
         text=True,
@@ -201,6 +208,63 @@ def test_full_cycle_reaches_completed(tmp_path: Path):
     assert again.returncode == 2
 
 
+def test_reviewer_contract_is_private_and_dispatches(tmp_path: Path):
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    state_dir = tmp_path / "host-state"
+    init_run(worktree)
+    transport = make_transport(worktree)
+    freeze_round(worktree, transport)
+    secret = "WITHHELD-CANARY-9f4d2a"
+    review_contract = tmp_path / "review-contract.md"
+    review_contract.write_text(secret, encoding="utf-8")
+    run_goal(
+        "freeze", "--workdir", worktree, "--goal-id", "r1",
+        "--round", "round-1", "--role", "reviewer",
+        "--contract", review_contract, state_dir=state_dir,
+    )
+
+    assert secret not in "\n".join(
+        path.read_text(encoding="utf-8", errors="ignore")
+        for path in worktree.rglob("*") if path.is_file()
+    )
+    ledger = json.loads(
+        (worktree / ".coordinator" / "r1" / "ledger.json").read_text()
+    )
+    assert ledger["rounds"]["round-1"]["review_contract"] == {
+        "private": True,
+        "sha256": hashlib.sha256(secret.encode()).hexdigest(),
+    }
+
+    dispatch_and_collect(worktree, transport, "implementer", IMPL_OK)
+    run_goal(
+        "dispatch", "--workdir", worktree, "--goal-id", "r1",
+        "--round", "round-1", "--role", "reviewer",
+        "--transport-dir", transport, artifact=REVIEW_GO, state_dir=state_dir,
+    )
+    prompt = state_dir / "r1" / "contracts" / "round-1-review.prompt.md"
+    assert secret in prompt.read_text()
+    assert not (worktree / ".coordinator" / "r1" / "contracts"
+                / "round-1-review.prompt.md").exists()
+
+
+def test_reviewer_dispatch_falls_back_to_legacy_goal_contract(tmp_path: Path):
+    init_run(tmp_path)
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    legacy = tmp_path / ".coordinator" / "r1" / "contracts" / "round-1-review.md"
+    legacy.write_text("legacy withheld contract", encoding="utf-8")
+    dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
+    state_dir = tmp_path.parent / f"{tmp_path.name}-private"
+    run_goal(
+        "dispatch", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "reviewer",
+        "--transport-dir", transport, artifact=REVIEW_GO, state_dir=state_dir,
+    )
+    prompt = state_dir / "r1" / "contracts" / "round-1-review.prompt.md"
+    assert "legacy withheld contract" in prompt.read_text()
+
+
 def test_missing_artifact_is_infrastructure_failure(tmp_path: Path):
     init_run(tmp_path)
     transport = make_transport(tmp_path)
@@ -302,6 +366,7 @@ def test_archive_copies_receipt_bundle_to_skill_runs(tmp_path: Path):
     assert (sink / "goal.json").is_file()
     assert (sink / "ledger.json").is_file()
     assert (sink / "contracts" / "round-1.md").is_file()
+    assert (sink / "contracts" / "round-1-review.md").is_file()
     assert (sink / "deliveries" / "round-1.json").is_file()
     assert (sink / "reviews" / "round-1.json").is_file()
     meta = json.loads((sink / "archive-meta.json").read_text())

@@ -114,6 +114,21 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def private_dir(goal_id: str) -> Path:
+    """Return host-private state for a goal, outside the role-visible worktree."""
+    override = os.environ.get("COORDINATOR_STATE_DIR")
+    if override:
+        root = Path(override).expanduser()
+    else:
+        state_home = os.environ.get("XDG_STATE_HOME")
+        root = (
+            Path(state_home).expanduser() / "coordinator"
+            if state_home
+            else Path.home() / ".local" / "state" / "coordinator"
+        )
+    return root / goal_id
+
+
 # Dispatch appends the role's envelope schema as the FINAL prompt segment.
 # Hard-won lesson (goal inv-recon-74 / verdict-taxonomy): a schema embedded in
 # a long contract loses to the worker's attention budget — the worker improvises
@@ -283,11 +298,22 @@ def cmd_freeze(args: argparse.Namespace) -> dict:
     if not source.is_file():
         fail(f"contract file {source} not found")
     suffix = "-review" if args.role == "reviewer" else ""
-    target = goal.dir / "contracts" / f"{args.round}{suffix}.md"
+    # Reviewer contracts can contain withheld checks. Freeze them in host-private
+    # state; only legacy goals may retain a reviewer contract in the worktree.
+    contract_dir = (
+        private_dir(args.goal_id) / "contracts"
+        if args.role == "reviewer"
+        else goal.dir / "contracts"
+    )
+    contract_dir.mkdir(parents=True, exist_ok=True)
+    target = contract_dir / f"{args.round}{suffix}.md"
     target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     entry = goal.round_entry(args.round)
     key = "review_contract" if args.role == "reviewer" else "contract"
-    entry[key] = {"path": str(target), "sha256": sha256_file(target)}
+    if args.role == "reviewer":
+        entry[key] = {"sha256": sha256_file(target), "private": True}
+    else:
+        entry[key] = {"path": str(target), "sha256": sha256_file(target)}
     if args.role == "implementer":
         goal.data["current_round"] = args.round
         goal.set_state("ready")
@@ -325,14 +351,26 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
             )
         result_rel = f".coordinator/{args.goal_id}/reviews/{args.round}.json"
     suffix = "-review" if args.role == "reviewer" else ""
-    contract = goal.dir / "contracts" / f"{args.round}{suffix}.md"
+    public_contract = goal.dir / "contracts" / f"{args.round}{suffix}.md"
+    if args.role == "reviewer":
+        private_contract = private_dir(args.goal_id) / "contracts" / public_contract.name
+        # Compatibility for goals frozen before reviewer contracts became private.
+        contract = private_contract if private_contract.is_file() else public_contract
+    else:
+        contract = public_contract
     if not contract.is_file():
         fail(f"contract {contract} not found; freeze it first")
 
     runner = resolve_transport_dir(args.transport_dir)
-    # The prompt is contract + runner-injected envelope schema tail (see
-    # ENVELOPE_TAILS). Materialize the combined prompt for the transport.
-    prompt_file = goal.dir / "contracts" / f"{args.round}{suffix}.prompt.md"
+    # Materialize reviewer prompts beside the private contract so neither the
+    # withheld checks nor the injected copy becomes visible in the worktree.
+    prompt_dir = (
+        private_dir(args.goal_id) / "contracts"
+        if args.role == "reviewer"
+        else goal.dir / "contracts"
+    )
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    prompt_file = prompt_dir / f"{args.round}{suffix}.prompt.md"
     atomic_write(
         prompt_file, build_dispatch_prompt(args.role, contract, result_rel)
     )
@@ -613,6 +651,18 @@ def cmd_archive(args: argparse.Namespace) -> dict:
                 target_dir.mkdir(exist_ok=True)
                 (target_dir / source.name).write_bytes(source.read_bytes())
                 files.append(f"{sub}/{source.name}")
+    # At closeout withheld checks are declassified into the coordinator's
+    # receipt archive. New goals keep these files only in host-private state.
+    private_contracts = private_dir(args.goal_id) / "contracts"
+    if private_contracts.is_dir():
+        for source in sorted(private_contracts.glob("*")):
+            if source.is_file():
+                target_dir = sink / "contracts"
+                target_dir.mkdir(exist_ok=True)
+                (target_dir / source.name).write_bytes(source.read_bytes())
+                archived_name = f"contracts/{source.name}"
+                if archived_name not in files:
+                    files.append(archived_name)
     meta = {
         "goal_id": args.goal_id,
         "state_at_archive": goal.state,

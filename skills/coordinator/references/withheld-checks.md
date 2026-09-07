@@ -83,6 +83,12 @@ that simultaneously claims the identifier does not appear.
 
 ## Keeping the library honest
 
+A withheld check that hits once must be reviewed for graduation into an open
+check or a deterministic guard. If source can decide it, turn it into a guard
+test: withheld checks patrol; guards are walls. Reusing the same withheld check
+for three rounds without graduating it means the check is aimed at the wrong
+thing.
+
 A shape that stops finding anything has either been absorbed into the contract,
 which is the desired outcome, or is being aimed at what the contract already
 demanded. Check which, using the open and withheld results recorded per round in

@@ -1,10 +1,9 @@
 # Codex CLI behavior
 
-Verified locally on 2026-07-26 with `codex-cli 0.145.0` (the plain-log runner
-invocation was verified on 2026-07-19 with 0.144.6). Re-verify with
-`codex --help`, `codex exec --help`, `codex exec resume --help`, and
-`codex exec review --help` after a CLI upgrade; argument placement is
-version-sensitive.
+Verified locally on 2026-09-07 with `codex-cli 0.152.1`. Re-verify with
+`codex --help`, `codex exec --help`, `codex review --help`,
+`codex exec resume --help`, and `codex exec review --help` after a CLI upgrade;
+argument placement is version-sensitive.
 
 This note covers both Codex adapters in this Skill: the `codex_run.py`
 structured adapter and the Codex provider of the `coding-agent-run` plain-log
@@ -12,9 +11,10 @@ runner.
 
 ## Global options carry the run policy
 
-`-C/--cd`, `-s/--sandbox`, `-a/--ask-for-approval`, `-m/--model`, and `-c` are
-**global** options and must precede the subcommand. Placing them after `exec`
-fails with `error: unexpected argument`.
+`-a/--ask-for-approval` is global-only and must precede `exec`.
+`-C/--cd`, `-s/--sandbox`, `-m/--model`, and `-c` are accepted both globally
+and by `exec` in 0.152.1. The adapter keeps run-policy options before the
+subcommand so one stable command shape works across verified versions.
 
 `codex exec resume` and `codex exec review` do **not** accept `-C` or `-s` of
 their own, which is why the adapter always builds:
@@ -36,6 +36,10 @@ codex -C <workdir> -s <sandbox> -a never [-m MODEL] [-c model_reasoning_effort="
 `exec`, `exec resume`, and `exec review` each accept `--json`, `-o`, and
 `--output-schema`, so the adapter forwards `--output-schema` on task and resume
 runs alike.
+
+The separate top-level `codex review` accepts the review selector flags but not
+`--json`, `-o`, or `--output-schema`; it is not the structured adapter entry
+point. The adapter therefore uses `codex exec review`.
 
 The trailing `-` makes Codex read the prompt from stdin, which avoids argument
 length and quoting limits. The adapter always supplies stdin explicitly
@@ -80,6 +84,9 @@ but the portable runner starts a fresh non-interactive execution.
 `-o/--output-last-message FILE` writes the final assistant message to disk; the
 adapter prefers that file and falls back to the last `agent_message` event.
 Unknown event types are ignored, so a newer CLI cannot break the reducer.
+Transport failures may additionally emit top-level `error` events and an
+`item.completed` whose item type is `error`; the reducer ignores both unless a
+normal terminal result follows.
 
 ## Git requirement
 

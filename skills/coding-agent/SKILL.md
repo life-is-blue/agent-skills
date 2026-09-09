@@ -43,8 +43,10 @@ For a modifying task in Git:
    the source ref from the request and Git state. Ask only about a material
    ambiguity that inspection cannot settle.
 2. Use the repository's approved sandbox for untrusted contributor refs.
-3. For trusted work, fetch the base and create an isolated worktree. Never edit
-   the primary checkout through a background worker.
+3. For trusted work, create an isolated worktree. Fetch when the task requires
+   current remote state; local-only work may use a verified local commit, with
+   the unrefreshed remote state disclosed. Never edit the primary checkout
+   through a background worker.
 4. Record the start SHA and include it, the worktree, branch, constraints, and
    required validation in the prompt.
 
@@ -128,7 +130,9 @@ state. `log` always returns the raw combined provider output.
 
 Set `CODING_AGENT_STATE_DIR` or pass `--state-dir DIR` to choose the session
 store. Otherwise the runner uses `$XDG_STATE_HOME/coding-agent` or
-`~/.local/state/coding-agent`.
+`~/.local/state/coding-agent`. Choose an allowed location with these options
+when the default is outside the authorized workspace; obtain authorization if
+an outside-workspace write is required. Configuration does not grant permission.
 
 Update the user after launch with the session ID and worktree. During execution,
 report only milestones, questions, failures, user action, and completion.

@@ -51,16 +51,20 @@ Read [TClaude compatibility](references/tclaude.md) before selecting `tclaude`.
 - Never pass permission-bypass flags for an untrusted checkout. Use the
   repository's approved sandbox/review workflow for contributor-controlled
   refs.
-- If a worker fails or hangs, diagnose, respawn, or ask the user. Do not
-  silently switch to hand-editing.
+- If a worker fails or hangs, diagnose and retry with a relevant change or use
+  an already-authorized equivalent route. Preserve an explicitly requested
+  provider and workflow; do not silently switch to hand-editing. Pause only
+  dependent steps and report the concrete blocker if no authorized route works.
 
 ## Prepare modifying work
 
 For changes to a Git repository:
 
-1. Identify and fetch the canonical remote and target base.
+1. Resolve the target base and canonical remote when present. Fetch when the
+   task requires current remote state; for local-only work, use a verified local
+   commit and disclose that remote state was not refreshed.
 2. Classify the source ref as trusted or untrusted before materializing it.
-3. For trusted work, create an isolated worktree from the fetched base/source.
+3. For trusted work, create an isolated worktree from the verified base/source.
 4. Verify and record the start SHA, worktree path, branch, canonical remote,
    and target base SHA.
 5. Put those values in the worker prompt. Require the worker to verify its

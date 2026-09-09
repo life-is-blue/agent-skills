@@ -26,16 +26,20 @@ SKILL_DIR=/path/to/coding-agent
 python3 "$SKILL_DIR/scripts/codex_run.py" doctor
 ```
 
-`doctor` reports the resolved `codex` binary, its version, and login state. Stop
-and report to the user when it is not ready; do not improvise an auth flow.
+`doctor` reports the resolved `codex` binary, its version, and login state. If
+not ready, diagnose and pause Codex-dependent steps; do not improvise an auth
+flow. Continue independent authorized work and use an already-authorized route
+only if it preserves the requested provider and workflow. Report the exact
+blocker when no such route exists.
 
 Codex requires a Git repository. For a modifying task:
 
 1. Resolve the target repository, canonical remote, target base, and trust of
    the source ref from the request and Git state. Ask only about a material
    ambiguity that inspection cannot settle.
-2. Fetch the base and create an isolated worktree. Never let a background worker
-   edit the primary checkout.
+2. Create an isolated worktree. Fetch when current remote state is required;
+   local-only work may use a verified local commit and disclose that the remote
+   was not refreshed. Never let a background worker edit the primary checkout.
 3. Record the start SHA and include it in the prompt.
 
 For scratch work, create a temporary directory and run `git init` first. The
@@ -124,7 +128,9 @@ when a finding requires a material product or scope decision.
   `$XDG_STATE_HOME/codex-run`, or `~/.local/state/codex-run`. The legacy
   `CODEX_DELEGATE_STATE_DIR` variable and `codex-delegate` directory from
   before the skill merge are honored when present. State holds the prompt, the
-  raw event stream, and Codex stderr; treat it as sensitive.
+  raw event stream, and Codex stderr; treat it as sensitive. Use `--state-dir`
+  to keep state in an allowed location when needed; obtain authorization if
+  an outside-workspace write is required.
 
 ## Verify
 

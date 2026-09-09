@@ -16,7 +16,7 @@ coordinator and nothing else.
 | Tier | The work is… | The mechanism |
 |---|---|---|
 | **0** | Simple edit, quick question, read-only lookup | Handle it directly. Do not load anything from this Skill. |
-| **1** | Direction or requirements still vague | Interview the user per [grilling.md](references/grilling.md) until the design-tree frontier is empty; capture CONTEXT.md + ADRs as you go. |
+| **1** | Direction or requirements still vague | Interview the user per [grilling.md](references/grilling.md) until material questions blocking the next stage are resolved; persist glossary or decision changes only when needed. |
 | **2** | Clear direction, complex but single-round deliverable | Freeze it into a self-contained task brief per [brief-authoring.md](references/brief-authoring.md) (≤4000 chars for `/goal`), dispatch through a transport, verify against the brief's checks. |
 | **3** | Super-complex, multi-round, or acceptance must be independent of the implementer | Run the verified loop below: durable target (constraint set + plan ledger), frozen contracts, withheld checks, evidence-gated acceptance. |
 
@@ -77,10 +77,13 @@ Verify observable capabilities with the CLI's local `--help`. Ask one
 consolidated question only for unresolved role choices or permissions that
 materially affect the goal. A minimal smoke on a network-backed CLI can reach
 the provider and spend real quota before any task has been authorized, so
-disclose that cost and get the user's go-ahead before running it — never run a
-provider-reaching smoke silently during host setup. Read the matching
+check whether existing authorization covers that provider, smoke purpose, and
+cost. If covered, disclose and proceed; otherwise finish local checks and request
+the missing authorization together. Never run an unauthorized provider-reaching
+smoke during host setup. Read the matching
 provider reference in the `coding-agent` Skill for per-CLI facts rather than
-restating them here, and re-confirm after a CLI upgrade. This Skill depends on
+restating them here, and re-verify capabilities after a CLI upgrade. An upgrade
+alone does not renew an approval requirement. This Skill depends on
 those provider references: a standalone install must copy the `coding-agent`
 Skill directory alongside this one. When the transport is a different
 monitored runner with no matching reference here, fall back to that runner's
@@ -115,12 +118,12 @@ question are direction, acceptance strictness, and risk. Consolidate into one
 round, and ask again only when new evidence invalidates the
 authorization or assumption being relied on.
 
-Otherwise decide, and disclose. List every call made on the user's behalf in one
-labeled section of the contract, and mark anything unverified as an assumption.
-Deciding silently takes authority the user did not give; deciding in the open
-gives them a cheap veto, which is why this section belongs where they will
-actually look. Answer these once per objective and keep them in the constraint
-set, not in each round's prompt.
+Otherwise decide and disclose important reversible choices within the authorized
+scope in one labeled contract section; mark unverified facts as assumptions.
+Disclosure requires no acknowledgement and cannot substitute for approval.
+Silence does not authorize a material scope, risk, provider, or cost change.
+Pause only steps dependent on a missing answer or approval and continue other
+authorized work. Keep settled choices in the constraint set across rounds.
 
 ## Choose a mode and route roles
 

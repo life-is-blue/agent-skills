@@ -42,16 +42,16 @@ Include only fields that change execution:
 8. **Reverse proof:** for silent-failure risks, run the procedure in
    [ground truth and gates](ground-truth.md) and paste both outputs.
 9. **Stop conditions:** retry bound, out-of-scope findings, and blocked protocol.
-   A well-documented blocked case is a valid delivery; a worse result presented as
-   success is not.
+   A well-documented blocked case satisfies reporting, not the original objective.
+   Pause only dependent steps, retain unresolved items, and respect the declared
+   run budget; never present a regression or incomplete goal as success.
 10. **Delivery envelope:** changed files, commands and exit codes, unresolved
     issues, revision, and concise result. For a portable run, declare the JSON
     result path and use the implementation envelope in
     [the runtime contract](runtime-contract.md).
-11. **Disclosed calls:** one labeled section listing every decision taken on the
-    user's behalf and every unverified assumption. It is the section a reviewing
-    human reads first, so a wrong call is vetoed before it is implemented rather
-    than after.
+11. **Disclosed calls:** one labeled section listing important reversible choices
+    within scope and unverified assumptions. Disclosure does not require an
+    acknowledgement or substitute for approval of a gated effect.
 
 For fast mode, outcome, workspace, scope, acceptance, and delivery may be enough.
 For a multi-round run, open with a read-back of the standing constraints and keep

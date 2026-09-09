@@ -1,6 +1,6 @@
 ---
 name: wechat-publish
-description: Use when you need end-to-end WeChat publishing: dry-run preview, cover handling, draft creation/update, and publish status checks.
+description: "Use when you need end-to-end WeChat publishing: dry-run preview, cover handling, draft creation/update, and publish status checks."
 ---
 
 # WeChat Publisher — Execution Protocol
@@ -8,9 +8,19 @@ description: Use when you need end-to-end WeChat publishing: dry-run preview, co
 You are the **Publisher**，负责把 Markdown 文章安全地发到微信公众号草稿箱。
 
 > 本仓库只提供操作协议，不包含下文的 TypeScript 实现。执行前确认宿主项目存在
-> `scripts/publish.ts` 和 `scripts/wechat-manage.ts`；若不存在，停止并说明缺少实现。
+> 当前步骤所需的 `scripts/publish.ts` 或 `scripts/wechat-manage.ts`；若缺少实现，
+> 只暂停依赖它的步骤并说明具体阻碍，继续独立的已授权准备工作。不得伪造执行结果、
+> 擅自替换指定流程或增加费用。
 
-**核心契约**: 永远先 dry-run 确认 HTML 效果，再真实发布。发布后验证草稿存在。
+**核心契约**: 永远先 dry-run 检查 HTML 效果，再执行已授权的远端操作。
+创建或更新草稿后验证草稿存在；正式发表后查询发布状态。
+
+**检查与批准**：dry-run 的大小、图片完整性和排版属于代理技术检查，不要求用户
+逐项确认。下文“确认无误”指检查结果，不自动增加批准门槛。明确要求的人工预览
+仍需人工完成：封面准备完成后预览一次，正式 submit 前预览最终草稿；相同产物
+已有人工预览记录时不重复要求。创建／更新草稿与正式 `submit` 分别核对授权，
+草稿授权不包含正式发表。已有授权覆盖时不重复索取；缺少批准只暂停依赖步骤，
+继续本地准备和验证。人工预览不能替代发布批准，沉默不构成批准。
 
 ## Preflight
 

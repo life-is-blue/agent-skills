@@ -1,9 +1,9 @@
 # Grilling — the requirement interview
 
-Interview the user persistently about their plan, decision, or idea until the
-thinking is sharp, and capture what crystallizes as durable documentation: a
-`CONTEXT.md` glossary and Architecture Decision Records. The interview is the
-engine; the docs are the exhaust — both matter.
+Clarify material uncertainties in the user's plan, decision, or idea until the
+next stage can proceed. Keep discussion in the conversation by default; persist
+terminology or decisions only when requested, when the current contract changes,
+or when execution recovery requires a runtime artifact.
 
 This is the Tier 1 tool: use it when direction or requirements are still
 vague, before any implementation brief is written.
@@ -27,21 +27,26 @@ Each round:
 3. Every answer reshapes the tree: settled decisions push the frontier outward
    and unblock the questions that depended on them.
 
-Decisions belong to the user. Present each decision-type question and wait for
-their answer; never settle a directional call on their behalf and move on.
+Wait for answers only on material choices about direction, acceptance, scope,
+or risk that inspection cannot settle. Use and disclose safe reversible defaults
+for implementation details within the authorized scope; disclosure is not approval.
+Silence does not settle a material choice or authorize a gated effect. Continue
+independent authorized work while dependent steps wait.
 
-The interview is done when the frontier is **empty**: every branch of the
-design tree visited, nothing left silently assumed. Confirm the shared
-understanding in a short recap before proceeding to any build step.
+End the interview when material questions blocking the next stage are resolved;
+do not explore every possible branch. Give a short recap without requiring a
+separate acknowledgement. If implementation is already requested, proceed through
+the coordinator's execution route within existing authorization.
 
 ## The docs
 
-Create files on demand — only when there is content to put in them.
+Create or update files only under the persistence conditions above; prefer
+existing documents and keep runtime state separate from project documentation.
 
 **Glossary.** Keep a `CONTEXT.md` at the repo root (single-context repos), or a
 `CONTEXT-MAP.md` indexing one `CONTEXT.md` per sub-area (multi-context repos).
 The exact format is [context-format.md](context-format.md).
-During the interview:
+When a persistent glossary is warranted:
 
 - Challenge terminology conflicts the moment they appear: "Your CONTEXT.md
   defines X as Y, but you seem to mean Z — which is correct?"
@@ -67,8 +72,10 @@ the three conditions fails — most decisions do not deserve one.
 A sharpened plan is not yet an executable brief. Return to the coordinator's
 tier routing: single-round deliverables go to Tier 2
 ([brief-authoring.md](brief-authoring.md)); multi-round work goes to Tier 3
-(the verified loop). Do not start implementing the plan inside the interview —
-the deliverable here is a sharp plan plus its docs.
+(the verified loop). For an interview-only request, deliver the clarified plan
+and any warranted docs.
+For an implementation request, continue through that route without handing
+execution back to the user unless the environment prevents execution.
 
 ## Anti-patterns
 
@@ -77,8 +84,7 @@ the deliverable here is a sharp plan plus its docs.
 - Asking questions whose answers depend on a decision not yet made — that is
   off-frontier speculation; wait for the frontier to reach them.
 - Settling a directional decision yourself to keep momentum.
-- Ending with "any other questions?" while branches of the tree remain
-  unvisited.
+- Expanding the interview into branches that do not block the requested outcome.
 - Writing ADRs for reversible, obvious, or uncontested decisions.
 - Letting implementation details leak into `CONTEXT.md`.
 - Batching glossary updates for "later" — later never comes.

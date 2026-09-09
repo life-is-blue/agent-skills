@@ -2,10 +2,12 @@
 
 ## Precedence
 
-Explicit user instruction > this file > a skill's SKILL.md > its references.
-A skill-level rule specializes a general rule within its scope; it never
-silently contradicts it. If two rules appear to conflict, apply the more
-specific one and make the chosen reading visible in the handoff.
+Subject to higher-priority host instructions, precedence is:
+explicit user instruction > this file > a skill's SKILL.md > its references.
+Use this hierarchy for real conflicts. Specificity only refines compatible
+rules or resolves rules at the same level; it cannot override a higher-level
+rule. Resolve such conflicts directly and disclose material interpretations
+in the handoff.
 
 ## Workflow
 
@@ -18,8 +20,11 @@ specific one and make the chosen reading visible in the handoff.
 5. Run `python3 scripts/validate_repo.py` and risk-proportionate relevant tests.
 
 Do not create task plans, audit reports, changelogs, or duplicate READMEs unless
-they are required runtime or legal artifacts. Git history records completed
-change history; repository documents describe current behavior.
+the user requests them or they are required runtime or legal artifacts.
+Keep execution state separate from durable project documentation. Discussion
+alone does not require repository files; update terminology or decision docs
+when the current contract changes. Git history records completed change history;
+repository documents describe current behavior.
 
 ## Execution authority
 
@@ -47,9 +52,18 @@ change history; repository documents describe current behavior.
 - Approval checks belong immediately before the gated effect. Once granted,
   continue through verification without asking again unless the target, scope,
   risk, or cost materially changes.
-- Decide reversible judgment calls with a safe default and disclose them in one
-  labeled place. Deciding silently takes authority the user did not give;
-  deciding in the open gives them a cheap veto.
+- Decide important reversible judgment calls within the authorized scope with a
+  safe default and disclose them in one labeled place. Disclosure is not an
+  approval request or a substitute for approval; silence is not authorization.
+  When a material answer or approval is missing, pause only dependent steps and
+  continue independent authorized work.
+- Do not infer a deletion or credential-management exception from ordinary edit
+  authority. Removing code within an authorized edit does not itself authorize
+  deleting files, data, or resources. Distinguish using already-configured
+  authentication for an authorized operation from creating, changing, exporting,
+  or disclosing credentials; the latter require explicit scope. Place runtime
+  state in an allowed location using existing configuration options; otherwise
+  obtain authorization for the required outside-workspace write.
 
 ## Completion and recovery
 

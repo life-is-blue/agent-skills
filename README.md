@@ -91,6 +91,19 @@ cp -r agent-skills/skills/<name> <client-skill-directory>/
 Read the copied `SKILL.md` before use. Client discovery directories and symlink
 support vary, so verify them against the current client and a local smoke test.
 
+## MCP servers
+
+[`mcp/catalog.json`](mcp/catalog.json) is a declarative catalog of MCP servers,
+and [`scripts/mcp_tool.py`](scripts/mcp_tool.py) syncs it into local clients or
+a project's `.mcp.json`. Credential-bearing entries reference environment
+variables rather than embedding secrets; the required variables and the safety
+rules are documented in [`mcp/README.md`](mcp/README.md).
+
+```bash
+./scripts/mcp_tool.py list
+./scripts/mcp_tool.py --dry-run enable context7
+```
+
 ## Validate
 
 ```bash

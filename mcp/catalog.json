@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "servers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"],
+      "category": "browser",
+      "description": "Chrome DevTools MCP for browser automation, DOM inspection and UI testing"
+    },
+    "figma": {
+      "command": "npx",
+      "args": ["@thirdstrandstudio/mcp-figma", "--figma-token", "${FIGMA_TOKEN}"],
+      "category": "design",
+      "description": "Figma MCP for reading designs, layout structures and design tokens"
+    },
+    "context7": {
+      "type": "sse",
+      "url": "https://mcp-api.tencent-cloud.com/sse/${CONTEXT7_SSE_ID}",
+      "category": "cloud",
+      "description": "Tencent Cloud Assistant Context SSE service"
+    },
+    "wecom-doc": {
+      "type": "http",
+      "url": "https://qyapi.weixin.qq.com/mcp/robot-doc?apikey=${WECOM_DOC_APIKEY}",
+      "category": "docs",
+      "description": "WeCom Smart Sheet and Document MCP endpoint"
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"],
+      "category": "network",
+      "description": "Fetch web pages and convert HTML to markdown"
+    },
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "${DB_PATH:-./data.db}"],
+      "category": "database",
+      "description": "Query and inspect SQLite database tables"
+    }
+  }
+}

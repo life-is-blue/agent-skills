@@ -13,6 +13,7 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS_DIR = ROOT / "skills"
+REPO_SCRIPTS_DIR = ROOT / "scripts"
 CATALOG = SKILLS_DIR / "catalog.json"
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
@@ -87,7 +88,8 @@ def resource_errors(skill_dir: Path, distribution: str) -> list[str]:
 
 def syntax_errors() -> list[tuple[Path, str]]:
     errors: list[tuple[Path, str]] = []
-    for path in sorted(SKILLS_DIR.rglob("*")):
+    candidates = sorted(SKILLS_DIR.rglob("*")) + sorted(REPO_SCRIPTS_DIR.glob("*"))
+    for path in candidates:
         if not path.is_file():
             continue
         if path.suffix == ".py":

@@ -1,6 +1,22 @@
 from pathlib import Path
 
-from scripts.validate_repo import frontmatter, local_link_errors
+from scripts import validate_repo
+from scripts.validate_repo import frontmatter, local_link_errors, syntax_errors
+
+
+def test_repo_scripts_pass_the_syntax_gate():
+    """The gate covers repo-root scripts/ too, not only skills/."""
+    assert syntax_errors() == []
+
+
+def test_syntax_gate_flags_broken_scripts(tmp_path: Path, monkeypatch):
+    broken = tmp_path / "oops.sh"
+    broken.write_text("if [ then\n", encoding="utf-8")
+    monkeypatch.setattr(validate_repo, "REPO_SCRIPTS_DIR", tmp_path)
+
+    failures = {path.name for path, _ in syntax_errors()}
+
+    assert "oops.sh" in failures
 
 
 def test_frontmatter_accepts_portable_fields(tmp_path: Path):

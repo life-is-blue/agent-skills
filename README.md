@@ -14,6 +14,7 @@ its scripts and references remain available.
 | `office-mpp` | bundled | Read, analyze, export, create, and edit Microsoft Project or MSPDI files |
 | `openclaw-coding-agent` | adapter | Run supported coding CLIs through OpenClaw sessions and notifications |
 | `pdf-to-markdown` | protocol-only | Guide a host-provided PDF-to-Markdown workflow |
+| `quota-router` | protocol-only | Route a quick lookup or small single-file edit to a cheap installed CLI instead of spending a capable model's quota |
 | `search-docs` | adapter | Search and read the git-library documentation service |
 | `skill-evolve-lite` | protocol-only | Improve a Skill through train traces, validation gates, and rollback |
 | `wechat-publish` | protocol-only | Guide a host-provided WeChat publishing workflow |
@@ -70,13 +71,15 @@ flowchart TB
     C -->|no-go: issue narrow repair| A
 ```
 
-The Skill remains `protocol-only`: it does not bundle a runner. A host can use
-the repository's `coding-agent` adapter, another monitored
-CLI adapter, or a native subagent API to implement the transport layer. A
-multi-round run defaults to `.coordinator/<goal-id>/` for role-visible
-state; withheld checks and raw transport state stay outside the repository.
-Transport success, implementation delivery, and acceptance are three separate
-claims, and only the coordinator advances the run state.
+The Skill ships its own state-machine runner (`scripts/coordinator_goal.py`),
+which owns goal bookkeeping, guarded transitions, mechanical envelope
+validation, and dispatch, and never adjudicates. What it does not ship is a
+transport adapter: a host supplies the repository's `coding-agent` adapter,
+another monitored CLI adapter, or a native subagent API. A multi-round run
+defaults to `.coordinator/<goal-id>/` for role-visible state; withheld checks
+and raw transport state stay outside the repository. Transport success,
+implementation delivery, and acceptance are three separate claims, and only
+the coordinator advances the run state.
 
 ## Install
 

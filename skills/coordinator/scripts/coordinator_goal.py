@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import uuid
@@ -333,9 +334,127 @@ def cmd_freeze(args: argparse.Namespace) -> dict:
     }
 
 
+CONFIG_AGENTS = {"codex", "agy", "claude", "tclaude"}
+
+
+def config_path(args: argparse.Namespace) -> Path:
+    explicit = getattr(args, "config", None) or os.environ.get("COORDINATOR_CONFIG")
+    return Path(explicit).expanduser().resolve() if explicit else Path(args.workdir).resolve() / ".coordinator/config.json"
+
+
+def validate_config(payload: object) -> dict:
+    if (not isinstance(payload, dict) or type(payload.get("schema_version")) is not int
+            or payload.get("schema_version") != 1):
+        fail("config must be an object with schema_version 1")
+    if payload.keys() - {"schema_version", "implementer", "reviewer"}:
+        fail("config contains unknown fields; do not store credentials or execution permissions here")
+    for role in ("implementer", "reviewer"):
+        candidates = payload.get(role)
+        if not isinstance(candidates, list) or not candidates:
+            fail(f"config {role} must be a nonempty ordered candidate array")
+        for candidate in candidates:
+            if (not isinstance(candidate, dict) or not isinstance(candidate.get("agent"), str)
+                    or candidate["agent"] not in CONFIG_AGENTS):
+                fail(f"config {role} contains an unsupported agent")
+            if candidate.keys() - {"agent", "model", "effort"}:
+                fail("candidate fields are agent, model and optional effort only")
+            model = candidate.get("model")
+            if (not isinstance(model, str) or not model or model.startswith("-")
+                    or any(c.isspace() for c in model)
+                    or any(token in model for token in ("*", ">", "<", "+", "以上"))):
+                fail("config models must be concrete CLI model IDs, not family names or version ranges")
+            effort = candidate.get("effort")
+            if effort is not None and (not isinstance(effort, str) or effort not in {"low", "medium", "high", "xhigh", "max"}):
+                fail("config effort is invalid")
+            if candidate["agent"] == "agy" and (role == "reviewer" or effort not in {"low", "medium", "high"}):
+                fail("agy is implementation-only and requires low/medium/high effort")
+    if not any(i["agent"] != r["agent"] for i in payload["implementer"] for r in payload["reviewer"]):
+        fail("config needs at least one different-provider implementer/reviewer pairing")
+    return payload
+
+
+def load_config(args: argparse.Namespace) -> dict:
+    path = config_path(args)
+    if not path.is_file():
+        raise GuardError(f"setup required: missing {path}; run coordinator_goal.py setup first")
+    try:
+        return validate_config(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"invalid coordinator config {path}: {exc}")
+
+
+def probe_candidate(candidate: dict, env: dict) -> None:
+    agent = candidate["agent"]
+    command = [agent, "--", "--help"] if agent == "tclaude" else [agent, "--help"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=10, env=env)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        fail(f"{agent} preflight failed: {exc}")
+    flags = ["--model"]
+    if candidate.get("effort") and agent != "codex":
+        flags += ["--effort"]
+    if agent == "agy":
+        flags += ["--input-format", "--output-format", "--json-schema", "--sandbox"]
+    if result.returncode or any(flag not in result.stdout for flag in flags):
+        fail(f"{agent} CLI does not expose required model/effort/transport flags")
+
+
+def cmd_setup(args: argparse.Namespace) -> dict:
+    if not args.from_file:
+        return {"command": "setup", "status": "confirmation-required", "config_path": str(config_path(args)),
+                "installed_agents": sorted(agent for agent in CONFIG_AGENTS if shutil.which(agent)),
+                "recommendations": [
+                    {"agent": "codex", "model": "gpt-5.6-luna", "effort": "high"},
+                    {"agent": "agy", "model_requirement": "Gemini Flash 3.8 or newer Flash", "effort": "high"},
+                    {"agent": "tclaude", "model_requirement": "DeepSeek Flash v4 or newer Flash"}],
+                "required": "Confirm concrete model IDs, ordered implementers and an independent reviewer; then setup --from-file FILE",
+                "errors": []}
+    try:
+        config = validate_config(json.loads(Path(args.from_file).read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"cannot read setup input: {exc}")
+    path = config_path(args)
+    if not path.is_relative_to(Path(args.workdir).resolve()) and not args.config:
+        fail("outside-workspace setup requires an explicitly authorized --config destination")
+    if path.exists():
+        fail("config already exists; review and edit it explicitly rather than overwriting via setup")
+    if not Path(args.workdir).resolve().is_dir():
+        fail("workdir does not exist")
+    for role in ("implementer", "reviewer"):
+        for candidate in config[role]:
+            probe_candidate(candidate, os.environ.copy())
+    if path == Path(args.workdir).resolve() / ".coordinator/config.json":
+        ensure_runtime_ignore(Path(args.workdir).resolve())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(path, json.dumps(config, indent=2, ensure_ascii=False) + "\n")
+    return {"command": "setup", "status": "configured", "config_path": str(path), "errors": []}
+
+
 def cmd_dispatch(args: argparse.Namespace) -> dict:
+    config = load_config(args)
     goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     workdir = Path(args.workdir).resolve()
+    env = {**os.environ, **(args.transport_env or {})}
+    candidates = config[args.role]
+    if args.agent != "auto":
+        candidates = [c for c in candidates if c["agent"] == args.agent]
+    if args.role == "reviewer":
+        implementer = find_job(goal, args.round, "implementer")
+        candidates = [c for c in candidates if c["agent"] != implementer["agent"]]
+    candidates = [c for c in candidates if shutil.which(c["agent"], path=env.get("PATH"))]
+    if args.role == "implementer":
+        reviewers = [c for c in config["reviewer"] if shutil.which(c["agent"], path=env.get("PATH"))]
+        candidates = [c for c in candidates if any(r["agent"] != c["agent"] for r in reviewers)]
+    if not candidates:
+        fail("no installed configured candidate for this role (review must use a different provider)")
+    selected = dict(candidates[0])
+    if args.model is not None:
+        selected["model"] = args.model
+    if args.effort is not None:
+        selected["effort"] = args.effort
+    validate_config({**config, args.role: [selected]})
+    probe_candidate(selected, env)
+    args.agent = selected["agent"]
     if args.role == "implementer":
         goal.require_state({"ready"}, "dispatch an implementer")
         if goal.data.get("current_round") != args.round:
@@ -372,14 +491,6 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
         adapter = runner.parent / "codex_run.py"
         if not adapter.is_file():
             fail("installed coding-agent transport lacks the agy structured adapter")
-        try:
-            help_result = subprocess.run(["agy", "--help"], capture_output=True, text=True,
-                                         timeout=10, env={**os.environ, **(args.transport_env or {})})
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            fail(f"agy preflight failed: {exc}")
-        if help_result.returncode or any(flag not in help_result.stdout for flag in (
-            "--input-format", "--output-format", "--json-schema", "--sandbox")):
-            fail("agy CLI lacks required stream/schema/sandbox flags; dispatch not started")
     # Materialize reviewer prompts beside the private contract so neither the
     # withheld checks nor the injected copy becomes visible in the worktree.
     prompt_dir = (
@@ -406,11 +517,16 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
         result_rel,
         "--json",
     ]
+    command += ["--model", selected["model"]]
+    if selected.get("effort"):
+        command += ["--effort", selected["effort"]]
     job = {
         "round_id": args.round, "role": args.role, "agent": args.agent,
         "session_id": None, "dispatched_at": now_iso(),
         "transport_status": "unknown", "worker_exit_code": None,
         "result_artifact": None,
+        "model": selected["model"], "effort": selected.get("effort"),
+        "config_sha256": hashlib.sha256(json.dumps(config, sort_keys=True).encode("utf-8")).hexdigest(),
     }
     if args.agent == "agy":
         state_dir = private_dir(args.goal_id) / "transport"
@@ -438,6 +554,7 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
                    "--output-schema", str(schema_file), "--state-dir", str(state_dir),
                    "--job-id", job["session_id"],
                    "--timeout", str(args.timeout), "--json"]
+        command += ["--model", selected["model"], "--effort", selected["effort"]]
     # Persist the attempt before launch: a host timeout is not evidence that
     # the worker stopped, and must never reopen the round automatically.
     goal.data.setdefault("jobs", []).append(job)
@@ -863,6 +980,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--repair-bound", type=int, default=3)
     p.set_defaults(func=cmd_init)
 
+    p = sub.add_parser("setup")
+    common(p, goal_id=False)
+    p.add_argument("--config")
+    p.add_argument("--from-file", help="user-confirmed configuration JSON")
+    p.set_defaults(func=cmd_setup)
+
     p = sub.add_parser("freeze")
     common(p)
     p.add_argument("--round", required=True)
@@ -875,6 +998,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--round", required=True)
     p.add_argument("--role", choices=["implementer", "reviewer"], required=True)
     p.add_argument("--agent", default="auto")
+    p.add_argument("--config")
+    p.add_argument("--model")
+    p.add_argument("--effort")
     p.add_argument("--timeout", type=int, default=3600)
     p.add_argument("--transport-dir")
     p.add_argument("--transport-env", type=transport_env, action="append")

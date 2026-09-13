@@ -43,6 +43,27 @@ def session_id(output: str) -> str:
     return match.group(1)
 
 
+def test_plain_runner_forwards_configured_model_and_effort(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("fixture")
+    env = runner_env(bin_dir)
+    for agent in ("codex", "tclaude"):
+        make_provider(bin_dir, agent, 'printf "args:%s\\n" "$*"\ncat\n')
+        state = tmp_path / f"state-{agent}"
+        output = run_runner("run", "--agent", agent, "--workdir", tmp_path,
+                            "--prompt-file", prompt, "--state-dir", state,
+                            "--model", "fixture-model", "--effort", "high", env=env)
+        log = state / "sessions" / session_id(output.stdout) / "output.log"
+        text = log.read_text()
+        assert "--model fixture-model" in text
+        if agent == "codex":
+            assert 'model_reasoning_effort="high"' in text
+        else:
+            assert "--effort high" in text
+
+
 def test_start_wait_status_and_log_with_fake_codex(tmp_path: Path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

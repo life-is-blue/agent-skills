@@ -13,6 +13,11 @@ tclaude --print --permission-mode acceptEdits
 
 With explicit `--unsafe`, it uses `bypassPermissions` instead.
 
+The runner forwards `--model ID` and optional `--effort LEVEL`. Forwarded local
+help inspected on 2026-09-13 exposes both flags. Setup recommends a user-confirmed
+DeepSeek Flash v4-or-newer Flash ID; model family/version is a preference, not a
+verified gateway catalog entry. Never silently substitute a model or effort.
+
 The wrapper forwards non-wrapper arguments to Claude Code. Use `tclaude --help`
 for wrapper commands and `tclaude -- --help` for the forwarded Claude Code
 interface. It supports text/JSON/stream-JSON output, session resume, tool

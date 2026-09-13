@@ -19,6 +19,10 @@ failure (including a CLI soft timeout returning partial output). The adapter
 uses `--sandbox --mode accept-edits`; these flags do not imply that every
 command is approved. Never bypass permissions to make a gate pass.
 
+The adapter forwards explicit `--model` and `--effort` (low/medium/high). Setup
+recommends a user-confirmed Gemini Flash 3.8-or-newer Flash ID with `high`;
+that family/version requirement is not itself a CLI ID or an availability claim.
+
 Only modifying tasks are supported. Plan mode is not an enforced read-only
 boundary; use an authorized read-only reviewer instead. `--unsafe` and
 `--resume-last` are refused. Explicit `--resume` maps to `--conversation` and

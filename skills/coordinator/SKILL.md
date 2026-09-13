@@ -65,6 +65,13 @@ coordinator's attention.
 
 ## Set up once per host
 
+Before provider dispatch, guide setup per
+[the configuration gate](references/runtime-contract.md). `setup` previews the
+recommended fast execution channels; after the user confirms concrete model IDs,
+candidate order and reviewer, `setup --from-file FILE` validates and saves them.
+Default dispatch requires a valid `.coordinator/config.json`, including explicit
+agent dispatch. The config is routing preference, not call or spending authority.
+
 Which CLI plays which role is a host fact, not part of the method. On first use
 in an environment, inspect installed CLIs and existing host configuration first,
 then keep resolved answers in the host environment rather than in this Skill:
@@ -134,15 +141,15 @@ Keep roles abstract: coordinator, implementer, and reviewer. Assign from the
 host's setup rather than permanently binding a vendor to a role, and when an
 eligible alternative exists, do not let the implementer approve its own work.
 
-Route by cost, which is observable, rather than by remaining balance, which is
-not:
+Route implementation by speed after capability, permissions and the quality
+floor are met, using the user's configured order rather than subscription balance:
 
 - spend the strongest and most expensive context on what decides the outcome:
   understanding the problem, freezing the contract, writing withheld checks, and
   adjudicating disputed evidence;
-- give high-frequency iteration to the cheapest provider that can carry it. The
+- give high-frequency iteration to a fast provider that can carry it. The
   compile, test, and fix loop consumes the most tokens per unit of progress and
-  gains the least from a stronger model;
+  should favor completion latency over token price alone;
 - prefer a reviewer from a different engine family, so a shared blind spot is
   less likely;
 - budget the reviewer as an executor rather than an author. Its brief is short

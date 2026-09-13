@@ -11,6 +11,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,9 +75,11 @@ def job_dir_for(state_dir: Path, job_id: str) -> Path:
 
 
 def write_json(path: Path, payload: dict) -> None:
-    tmp = path.with_suffix(f"{path.suffix}.tmp")
-    tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                     prefix=f".{path.name}.", delete=False) as tmp:
+        json.dump(payload, tmp, indent=2, ensure_ascii=False)
+        tmp.write("\n")
+    os.replace(tmp.name, path)
 
 
 def read_job(job_dir: Path) -> dict:
@@ -308,6 +311,8 @@ def build_codex_argv(job: dict) -> list[str]:
             argv += ["--conversation", job["resume_thread_id"]]
         if job.get("model"):
             argv += ["--model", job["model"]]
+        if job.get("effort"):
+            argv += ["--effort", job["effort"]]
         return argv
     argv = ["codex", "-C", job["workdir"]]
     if job["sandbox"] == "danger-full-access":
@@ -796,6 +801,8 @@ def start_like(args: argparse.Namespace, kind: str) -> int:
         raise InputError(f"{agent} CLI not found on PATH")
     if agent == "agy" and (not args.write or args.unsafe or args.resume_last):
         raise InputError("agy requires --write; read-only, unsafe and resume-last are not supported")
+    if agent == "agy" and args.effort is not None and args.effort not in {"low", "medium", "high"}:
+        raise InputError("agy effort must be low, medium or high")
     if args.timeout is not None and args.timeout <= 0:
         raise InputError("--timeout must be positive")
     state_dir = resolve_state_dir(args.state_dir)

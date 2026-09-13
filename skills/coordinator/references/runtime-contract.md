@@ -5,7 +5,60 @@ between compatible hosts. The coordinator owns the state machine. A transport
 reports execution facts; an implementer reports a candidate; a reviewer reports
 evidence. None of those reports advances the goal by itself.
 
-## Interrupted dispatch and stalled workers
+## Configuration gate
+
+`dispatch` requires configuration before accessing a goal or launching a
+provider. Use `.coordinator/config.json` by default; `--config FILE` overrides
+`COORDINATOR_CONFIG`, which overrides that default. An explicit config is a whole
+configuration, not a merged project overlay. No configuration is written to a
+user directory automatically. The default file is covered by the runtime ignore.
+
+First run `coordinator_goal.py setup --workdir REPO --json`: it returns a preview
+and confirmation requirements, without creating files or calling a provider.
+Recommend Codex `gpt-5.6-luna` with `high`, agy Gemini Flash 3.8 or newer Flash
+with `high`, and TClaude DeepSeek Flash v4 or newer Flash (effort configurable).
+These are user-selected baselines, not verified claims about model availability.
+Resolve actual IDs from local catalogs/cache or an authorized metadata query;
+do not save family names, ranges or silently track future versions. Do not enable
+an extra paid Fast service tier implicitly.
+
+After the user confirms role/model choices, write an input JSON and run
+`setup --from-file FILE --workdir REPO --json`. The script validates the schema
+and local help surfaces before saving. It refuses to overwrite existing config;
+review subsequent edits explicitly. Example confirmed config shape:
+
+```json
+{
+  "schema_version": 1,
+  "implementer": [
+    {"agent": "codex", "model": "gpt-5.6-luna", "effort": "high"}
+  ],
+  "reviewer": [
+    {"agent": "tclaude", "model": "USER_CONFIRMED_EXACT_MODEL_ID"}
+  ]
+}
+```
+
+Only schema version and role arrays are accepted at the top level; candidate
+fields are `agent`, concrete `model`, and optional `effort`. The configured model
+adapters currently support Codex, agy, Claude Code and TClaude; other plain-log
+providers remain usable directly, not through this model gate. No credentials,
+permission bypass or spending grants belong in this config.
+
+`auto` selects the first installed configured candidate with an installed
+different-provider review option. Explicit `--agent` restricts that list;
+`--model` and `--effort` override the selected settings but cannot bypass setup
+or validation. Unsupported flags/efforts block before launch, not silently fall
+back. Review excludes the current implementer provider. This is provider
+separation, not proof of engine diversity or enforced read-only execution:
+choose independent engines and preserve the existing review workspace boundary.
+
+Each job records resolved provider/model/effort and SHA-256 of the loaded config
+serialized with sorted keys. CLI help checks prove parameter surfaces, not actual
+account access, latency or model quality. Live smoke/benchmark and writes to an
+explicit outside-workspace config destination still need applicable authorization.
+
+## Interrupted attempts
 
 Dispatch records an unknown attempt before launching. A transport timeout or
 malformed transport response leaves that attempt in place, not ready for retry.

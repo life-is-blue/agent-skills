@@ -21,7 +21,7 @@ def host(tmp_path):
     agy.write_text('''#!/usr/bin/env python3
 import json, os, sys, time
 if "--help" in sys.argv:
-    print("--input-format --output-format --json-schema --sandbox")
+    print("--input-format --output-format --json-schema --sandbox --model --effort")
     sys.exit(0)
 if os.environ.get("AGY_NO_READ"):
     time.sleep(60)
@@ -37,8 +37,16 @@ if not os.environ.get("AGY_PARTIAL"):
         "changed_files":[], "commands":[], "unresolved":[], "summary":"fixture"}}))
 ''')
     agy.chmod(0o755)
+    reviewer = binary / "codex"
+    reviewer.write_text('#!/bin/sh\necho "--model --effort"\n')
+    reviewer.chmod(0o755)
     repo = tmp_path / "repo"
     repo.mkdir()
+    runtime = repo / ".coordinator"
+    runtime.mkdir()
+    (runtime / "config.json").write_text(json.dumps({"schema_version": 1,
+        "implementer": [{"agent": "agy", "model": "fixture-flash", "effort": "high"}],
+        "reviewer": [{"agent": "codex", "model": "fixture-review", "effort": "high"}]}))
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     schema = tmp_path / "schema.json"
     schema.write_text('{"type":"object"}')
@@ -171,6 +179,15 @@ def test_nested_payload_validation():
     payload.update(schema_version=1, role="reviewer", verdict="go", round_id="r",
                    candidate_revision="candidate", checks=["not an object"])
     assert "checks entries must be objects" in module.validate_envelope("reviewer", payload)
+
+
+def test_agy_effort_is_not_silently_ignored():
+    spec = importlib.util.spec_from_file_location("runner", RUNNER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    argv = module.build_codex_argv({"agent": "agy", "workdir": "/fixture",
+                                  "model": "fixture-flash", "effort": "high"})
+    assert argv[argv.index("--effort") + 1] == "high"
 
 
 def test_lost_worker_cannot_be_marked_safely_cancelled(host):

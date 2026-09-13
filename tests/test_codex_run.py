@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 
 import pytest
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +21,22 @@ def load_runner_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_concurrent_job_writes_use_distinct_atomic_temporary_files(tmp_path, monkeypatch):
+    module = load_runner_module()
+    barrier = Barrier(2)
+    replace = module.os.replace
+    def synchronized_replace(source, target):
+        barrier.wait(timeout=5)
+        replace(source, target)
+    monkeypatch.setattr(module.os, "replace", synchronized_replace)
+    target = tmp_path / "job.json"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(module.write_json, target, {"status": "cancelled"}) for _ in range(2)]
+        for future in futures:
+            future.result()
+    assert json.loads(target.read_text()) == {"status": "cancelled"}
 
 FAKE_CODEX = """#!/usr/bin/env bash
 set -u

@@ -7,11 +7,11 @@ usage() {
   cat <<'EOF'
 Usage:
   coding-agent-run run --agent <auto|codex|claude|tclaude|codebuddy|opencode> \
-    --workdir DIR --prompt-file FILE [--state-dir DIR] [--result-file RELATIVE_PATH] \
-    [--unsafe] [--json]
+  --workdir DIR --prompt-file FILE [--state-dir DIR] [--result-file RELATIVE_PATH] \
+    [--model ID] [--effort LEVEL] [--unsafe] [--json]
   coding-agent-run start --agent <auto|codex|claude|tclaude|codebuddy|opencode> \
     --workdir DIR --prompt-file FILE [--state-dir DIR] [--result-file RELATIVE_PATH] \
-    [--unsafe] [--json]
+    [--model ID] [--effort LEVEL] [--unsafe] [--json]
   coding-agent-run status SESSION [--state-dir DIR] [--json]
   coding-agent-run log SESSION [--state-dir DIR]
   coding-agent-run wait SESSION [--state-dir DIR] [--timeout SECONDS] [--json]
@@ -272,6 +272,9 @@ run_worker() {
   local agent=$2
   local workdir=$3
   local unsafe=$4
+  local model= effort=
+  [[ ! -f "$session_dir/model" ]] || model=$(<"$session_dir/model")
+  [[ ! -f "$session_dir/effort" ]] || effort=$(<"$session_dir/effort")
   local child_pid rc
   local -a command_args
 
@@ -326,6 +329,16 @@ run_worker() {
     return 1
   }
 
+  if [[ -n "$model" ]]; then
+    command_args+=(--model "$model")
+  fi
+  if [[ -n "$effort" ]]; then
+    if [[ "$agent" == codex ]]; then
+      command_args+=(-c "model_reasoning_effort=\"$effort\"")
+    else
+      command_args+=(--effort "$effort")
+    fi
+  fi
   "${command_args[@]}" <"$session_dir/prompt.txt" &
   child_pid=$!
   printf '%s\n' "$child_pid" >"$session_dir/child_pid"
@@ -339,10 +352,12 @@ run_worker() {
 launch_session() {
   local launch_mode=$1
   shift
-  local agent=auto workdir= prompt_file= state_dir= result_file= unsafe=0 json=0
+  local agent=auto workdir= prompt_file= state_dir= result_file= model= effort= unsafe=0 json=0
   while (($#)); do
     case "$1" in
       --agent) [[ $# -ge 2 ]] || die '--agent requires a value'; agent=$2; shift 2 ;;
+      --model) [[ $# -ge 2 && -n "$2" ]] || die '--model requires a value'; model=$2; shift 2 ;;
+      --effort) [[ $# -ge 2 && -n "$2" ]] || die '--effort requires a value'; effort=$2; shift 2 ;;
       --workdir) [[ $# -ge 2 ]] || die '--workdir requires a value'; workdir=$2; shift 2 ;;
       --prompt-file) [[ $# -ge 2 ]] || die '--prompt-file requires a value'; prompt_file=$2; shift 2 ;;
       --state-dir) [[ $# -ge 2 ]] || die '--state-dir requires a value'; state_dir=$2; shift 2 ;;
@@ -366,6 +381,12 @@ launch_session() {
   prompt_file=$(absolute_file "$prompt_file") || exit $?
   [[ -z "$result_file" ]] || validate_result_target "$workdir" "$result_file"
   agent=$(select_agent "$agent") || exit $?
+  if [[ -n "$model" || -n "$effort" ]]; then
+    case "$agent" in codex|claude|tclaude) ;; *) die 'model/effort mapping is only verified for codex, claude and tclaude' ;; esac
+  fi
+  if [[ -n "$effort" ]]; then
+    case "$effort" in low|medium|high|xhigh|max) ;; *) die 'invalid effort level' ;; esac
+  fi
   if [[ "$unsafe" == 1 && "$agent" == opencode ]]; then
     die '--unsafe is not supported for opencode; verify a provider-specific flag first'
   fi
@@ -380,6 +401,8 @@ launch_session() {
   printf '%s\n' "$agent" >"$session_dir/agent"
   printf '%s\n' "$workdir" >"$session_dir/workdir"
   printf '%s\n' "$unsafe" >"$session_dir/unsafe"
+  [[ -z "$model" ]] || printf '%s\n' "$model" >"$session_dir/model"
+  [[ -z "$effort" ]] || printf '%s\n' "$effort" >"$session_dir/effort"
   [[ -z "$result_file" ]] || printf '%s\n' "$result_file" >"$session_dir/result_file"
   date -u +%Y-%m-%dT%H:%M:%SZ >"$session_dir/started_at"
   log_file="$session_dir/output.log"

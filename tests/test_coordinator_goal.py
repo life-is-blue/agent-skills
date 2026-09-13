@@ -98,6 +98,15 @@ def run_goal(*args: object, artifact: dict | None = None,
         workdir = Path(values[values.index("--workdir") + 1]).resolve()
         state_dir = workdir.parent / f".{workdir.name}-coordinator-state"
     env["COORDINATOR_STATE_DIR"] = str(state_dir)
+    values = [str(arg) for arg in args]
+    workdir = Path(values[values.index("--workdir") + 1]).resolve()
+    bin_dir = workdir / "fake-help-bin"
+    bin_dir.mkdir(exist_ok=True)
+    for agent in ("codex", "claude"):
+        binary = bin_dir / agent
+        binary.write_text('#!/bin/sh\necho "--model --effort"\n')
+        binary.chmod(0o755)
+    env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     proc = subprocess.run(
         [sys.executable, str(RUNNER), *(str(a) for a in args), "--json"],
         text=True,
@@ -114,6 +123,11 @@ def payload(proc: subprocess.CompletedProcess) -> dict:
 
 
 def init_run(tmp_path: Path, repair_bound: int = 1) -> None:
+    runtime = tmp_path / ".coordinator"
+    runtime.mkdir(exist_ok=True)
+    (runtime / "config.json").write_text(json.dumps({"schema_version": 1,
+        "implementer": [{"agent": "codex", "model": "fixture", "effort": "high"}],
+        "reviewer": [{"agent": "claude", "model": "fixture-review"}]}))
     run_goal(
         "init", "--workdir", tmp_path, "--goal-id", "r1",
         "--objective", "fixture objective", "--repair-bound", repair_bound,

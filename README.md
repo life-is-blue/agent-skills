@@ -79,7 +79,9 @@ another monitored CLI adapter, or a native subagent API. A multi-round run
 defaults to `.coordinator/<goal-id>/` for role-visible state; withheld checks
 and raw transport state stay outside the repository. The runtime directory
 generates its own ignore file; receipts stay in `.coordinator/archives/<goal-id>/`,
-not the Skill installation. Transport success,
+not the Skill installation. Provider dispatch requires validated role/model
+configuration; `coordinator_goal.py setup` guides the initial choices, then
+`setup --from-file FILE` saves confirmed settings. Transport success,
 implementation delivery, and acceptance are three separate claims, and only
 the coordinator advances the run state.
 

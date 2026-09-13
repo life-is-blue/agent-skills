@@ -22,6 +22,11 @@ The workspace, prompt, and verification sections apply to both adapters.
 ## Route
 
 - Honor an explicitly requested provider.
+- Coordinator dispatch resolves provider/model/effort from its validated setup
+  config; the plain runner's installed-provider order below is only its standalone
+  fallback, not the coordinator's execution preference. Both runners must pass
+  configured effort, never silently ignore it. Plain-log `--model`/`--effort`
+  are verified for Codex, Claude Code and TClaude; other mappings are refused.
 - Route agy to the structured runner, not the plain-log provider allowlist.
   Read [agy](references/agy.md) before use; it is not a read-only reviewer.
 - With `--agent auto`, select the first installed provider in this order:

@@ -55,6 +55,9 @@ For a modifying task in Git:
    current remote state; local-only work may use a verified local commit, with
    the unrefreshed remote state disclosed. Never edit the primary checkout
    through a background worker.
+   For coordinator-managed goals, use its registered workspace instead of
+   creating another one with provider-native `--worktree`. The transport runs
+   in that root; it does not manage the worktree lifecycle or copy ignored files.
 4. Record the start SHA and include it, the worktree, branch, constraints, and
    required validation in the prompt.
 
@@ -135,6 +138,10 @@ bash "$SKILL_DIR/scripts/coding-agent-run" stop <session>
 
 Add `--json` to `status`, `wait`, or `stop` when the caller consumes structured
 state. `log` always returns the raw combined provider output.
+JSON `activity` reports log modification time (`log_updated_at_unix`) and size
+(`log_bytes`); these are observations, not a heartbeat or proof of progress.
+Never redispatch into the same worktree from a quiet log or an error line alone:
+confirm terminal runner state and any detached work has stopped first.
 
 Set `CODING_AGENT_STATE_DIR` or pass `--state-dir DIR` to choose the session
 store. Otherwise the runner uses `$XDG_STATE_HOME/coding-agent` or
@@ -194,6 +201,8 @@ protocol owns that schema and acceptance decision.
 provider. Until both finish, status remains `stopping`; only a terminal exit 143
 associated with that request becomes `cancelled`. A provider that exits 143 on
 its own is `failed`.
+Terminal records are published atomically and rechecked after process disappearance;
+a completion racing the PID probe must not become `lost`.
 
 The base text-mode runner needs Bash and ordinary POSIX process tools. `--json`
 and `--result-file` additionally require Python 3 from the host.

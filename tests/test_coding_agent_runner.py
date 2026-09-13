@@ -49,8 +49,8 @@ def test_plain_runner_forwards_configured_model_and_effort(tmp_path: Path):
     prompt = tmp_path / "prompt.txt"
     prompt.write_text("fixture")
     env = runner_env(bin_dir)
-    for agent in ("codex", "tclaude"):
-        make_provider(bin_dir, agent, 'printf "args:%s\\n" "$*"\ncat\n')
+    for agent in ("codex", "claude", "tclaude"):
+        make_provider(bin_dir, agent, 'printf "args:%s\\n" "$*"\nprintf "cwd:%s\\n" "$PWD"\ncat\n')
         state = tmp_path / f"state-{agent}"
         output = run_runner("run", "--agent", agent, "--workdir", tmp_path,
                             "--prompt-file", prompt, "--state-dir", state,
@@ -58,10 +58,36 @@ def test_plain_runner_forwards_configured_model_and_effort(tmp_path: Path):
         log = state / "sessions" / session_id(output.stdout) / "output.log"
         text = log.read_text()
         assert "--model fixture-model" in text
+        assert f"cwd:{tmp_path.resolve()}" in text
+        assert "--worktree" not in text
+        assert "--resume" not in text
         if agent == "codex":
             assert 'model_reasoning_effort="high"' in text
         else:
             assert "--effort high" in text
+
+
+def test_wait_rechecks_completion_when_pid_disappears(tmp_path: Path):
+    state = tmp_path / "state"
+    session = state / "sessions/race-fixture"
+    session.mkdir(parents=True)
+    for name, value in {"pid": "999999", "agent": "codex", "workdir": str(tmp_path),
+                        "result_file": "delivery.json", "started_at": "fixture"}.items():
+        (session / name).write_text(value + "\n")
+    # Complete between the first exit-code check and the process-presence check.
+    # BASH_ENV defines a deterministic kill probe, without launching a worker.
+    startup = tmp_path / "probe.sh"
+    startup.write_text('kill() { printf "0\\n" > "$PROBE_SESSION/exit_code"; return 1; }\n')
+    env = runner_env(tmp_path)
+    env.update(BASH_ENV=str(startup), PROBE_SESSION=str(session))
+    waited = run_runner("wait", "race-fixture", "--state-dir", state, "--timeout", "5", "--json",
+                        env=env, check=False)
+    assert waited.returncode == 2
+    envelope = json.loads(waited.stdout)
+    assert envelope["status"] == "completed"
+    assert envelope["worker_exit_code"] == 0
+    assert envelope["result_artifact"]["status"] == "missing"
+    assert not any(error["code"] == "E_WORKER_LOST" for error in envelope["errors"])
 
 
 def test_start_wait_status_and_log_with_fake_codex(tmp_path: Path):
@@ -163,6 +189,8 @@ def test_json_envelope_records_required_result_artifact(tmp_path: Path):
     }
     assert status_envelope["result_artifact"]["status"] == "present"
     assert status_envelope["errors"] == []
+    assert status_envelope["activity"]["log_bytes"] == Path(status_envelope["log_file"]).stat().st_size
+    assert status_envelope["activity"]["log_updated_at_unix"] == Path(status_envelope["log_file"]).stat().st_mtime
 
 
 def test_run_returns_one_terminal_json_envelope(tmp_path: Path):

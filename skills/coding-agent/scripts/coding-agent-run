@@ -111,19 +111,21 @@ select_agent() {
   die 'no supported provider found (codex, claude, tclaude, codebuddy, opencode)'
 }
 
-session_status() {
-  local session_dir=$1
-  local pid exit_code
-  [[ -d "$session_dir" ]] || die "unknown session: $(basename "$session_dir")"
-  if [[ -f "$session_dir/exit_code" ]]; then
-    exit_code=$(<"$session_dir/exit_code")
-    if [[ "$exit_code" == 0 ]]; then
-      printf 'completed'
-    else
-      printf 'failed'
-    fi
-    return
+terminal_session_status() {
+  local session_dir=$1 exit_code
+  [[ -f "$session_dir/exit_code" ]] || return 1
+  exit_code=$(<"$session_dir/exit_code")
+  if [[ "$exit_code" == 0 ]]; then
+    printf 'completed'
+  else
+    printf 'failed'
   fi
+}
+
+session_status() {
+  local session_dir=$1 pid
+  [[ -d "$session_dir" ]] || die "unknown session: $(basename "$session_dir")"
+  if terminal_session_status "$session_dir"; then return; fi
   pid=$(<"$session_dir/pid")
   if kill -0 "$pid" 2>/dev/null; then
     if [[ -f "$session_dir/cancel_requested" ]]; then
@@ -132,7 +134,9 @@ session_status() {
       printf 'running'
     fi
   else
-    printf 'lost'
+    # The worker may have published completion after the initial file check
+    # and exited before kill -0. A terminal record takes precedence over PID.
+    terminal_session_status "$session_dir" || printf 'lost'
   fi
 }
 
@@ -157,7 +161,7 @@ def read(name, default=None):
 
 raw_exit = read("exit_code")
 worker_exit_code = int(raw_exit) if raw_exit is not None else None
-if status == "running" and worker_exit_code is not None:
+if status in {"running", "lost"} and worker_exit_code is not None:
     status = "completed" if worker_exit_code == 0 else "failed"
 cancel_acknowledged = (session_dir / "cancel_acknowledged").exists()
 json_status = (
@@ -218,6 +222,13 @@ if result_file is not None:
                     else:
                         artifact.update(status="present", bytes=observed, sha256=digest.hexdigest())
 
+log_file = session_dir / "output.log"
+try:
+    log_stat = log_file.stat()
+    activity = {"log_updated_at_unix": log_stat.st_mtime, "log_bytes": log_stat.st_size}
+except OSError:
+    activity = {"log_updated_at_unix": None, "log_bytes": None}
+
 envelope = {
     "schema_version": 1,
     "session_id": session_id,
@@ -230,6 +241,7 @@ envelope = {
     "started_at": read("started_at"),
     "finished_at": read("finished_at"),
     "log_file": str(session_dir / "output.log"),
+    "activity": activity,
     "result_artifact": artifact,
     "wait_timed_out": wait_timed_out == "true",
     "errors": errors,
@@ -263,8 +275,11 @@ PY
 write_completion() {
   local session_dir=$1
   local code=$2
+  local terminal_file
   date -u +%Y-%m-%dT%H:%M:%SZ >"$session_dir/finished_at"
-  printf '%s\n' "$code" >"$session_dir/exit_code"
+  terminal_file=$(mktemp "$session_dir/.exit_code.XXXXXX") || return 1
+  printf '%s\n' "$code" >"$terminal_file"
+  mv "$terminal_file" "$session_dir/exit_code"
 }
 
 run_worker() {

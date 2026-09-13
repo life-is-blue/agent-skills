@@ -37,7 +37,7 @@ open/withheld checks.
 | goal | run（旧称，已退役） | One objective with direction, bounds, and verifiable completion; tracked in `.coordinator/<goal-id>/` |
 | round | 轮 | One contract → candidate → verdict cycle inside a goal |
 | session / job | — | A transport-level worker process (coding-agent says session, codex_run says job) |
-| archive | 回执包 | Terminal receipt copy under `skills/coordinator/goals/`, gitignored |
+| archive | 回执包 | Terminal receipt copy under `.coordinator/archives/<goal-id>/`, gitignored |
 
 ## The verified loop (Tier 3)
 
@@ -208,7 +208,8 @@ not relay jobs or keep books by hand. It does three things and no more:
 
 - **Bookkeeping** — `init` scaffolds `.coordinator/<goal-id>/` (`goal.json`,
   `ledger.json`, `constraints.md`, contract/delivery/review directories);
-  `status` reports current state.
+  generates `.coordinator/.gitignore` to ignore runtime output without editing
+  the repository's root ignore file; `status` reports current state.
 - **Guarded transitions** — `freeze` (establishing/repairing → ready),
   `dispatch` (drives the `coding-agent` transport; ready → implementing →
   reviewing), and `advance` (coordinator-driven moves) refuse illegal
@@ -266,11 +267,16 @@ python3 "$SKILL_DIR/scripts/coordinator_goal.py" advance --goal-id goal-1 \
 The transport defaults to the sibling `coding-agent` Skill; override with
 `--transport-dir` or `CODING_AGENT_DIR`. Withheld checks and raw transport
 logs still live in host-private state, outside the repository. When a goal
-ends, `archive` copies the receipt bundle to `skills/coordinator/goals/<goal-id>/`
+ends, `archive` copies the receipt bundle to `.coordinator/archives/<goal-id>/`
 (gitignored) — the long-term, traceable record; the worktree
 `.coordinator/<goal-id>/` is per-run working state.
 
 ## Verify and stop
+
+Explicit agy implementer dispatch uses coding-agent's structured adapter;
+read that Skill's agy provider reference first. Do not route agy to the plain-log allowlist
+or use it as an enforced read-only reviewer. See
+[runtime recovery](references/runtime-contract.md) for interrupted attempts.
 
 Use [the review contract](references/review-contract.md). The controller, not a
 worker's prose, decides whether evidence meets the gate.

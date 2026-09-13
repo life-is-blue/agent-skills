@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -231,9 +232,12 @@ def cmd_init(args: argparse.Namespace) -> dict:
     workdir = Path(args.workdir).resolve()
     if not workdir.is_dir():
         fail(f"workdir {workdir} does not exist")
+    if not args.goal_id or "/" in args.goal_id or args.goal_id.startswith("."):
+        fail("goal-id must be a plain path segment")
     goal_dir = workdir / ".coordinator" / args.goal_id
     if goal_dir.exists():
         fail(f"goal directory {goal_dir} already exists; pick a new goal-id")
+    ensure_runtime_ignore(workdir)
     for sub in ("contracts", "deliveries", "reviews"):
         (goal_dir / sub).mkdir(parents=True)
     revision = args.start_revision
@@ -362,6 +366,20 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
         fail(f"contract {contract} not found; freeze it first")
 
     runner = resolve_transport_dir(args.transport_dir)
+    if args.agent == "agy" and args.role != "implementer":
+        fail("agy adapter does not enforce read-only review; choose an authorized read-only reviewer")
+    if args.agent == "agy":
+        adapter = runner.parent / "codex_run.py"
+        if not adapter.is_file():
+            fail("installed coding-agent transport lacks the agy structured adapter")
+        try:
+            help_result = subprocess.run(["agy", "--help"], capture_output=True, text=True,
+                                         timeout=10, env={**os.environ, **(args.transport_env or {})})
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            fail(f"agy preflight failed: {exc}")
+        if help_result.returncode or any(flag not in help_result.stdout for flag in (
+            "--input-format", "--output-format", "--json-schema", "--sandbox")):
+            fail("agy CLI lacks required stream/schema/sandbox flags; dispatch not started")
     # Materialize reviewer prompts beside the private contract so neither the
     # withheld checks nor the injected copy becomes visible in the worktree.
     prompt_dir = (
@@ -388,12 +406,49 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
         result_rel,
         "--json",
     ]
+    job = {
+        "round_id": args.round, "role": args.role, "agent": args.agent,
+        "session_id": None, "dispatched_at": now_iso(),
+        "transport_status": "unknown", "worker_exit_code": None,
+        "result_artifact": None,
+    }
+    if args.agent == "agy":
+        state_dir = private_dir(args.goal_id) / "transport"
+        if (workdir / result_rel).exists():
+            fail("delivery path already exists; collect or set aside the old attempt first")
+        job["session_id"] = f"agy-{uuid.uuid4().hex}"
+        job["adapter"] = str(adapter)
+        schema_file = prompt_dir / f"{args.round}.schema.json"
+        atomic_write(schema_file, json.dumps({
+            "type": "object", "additionalProperties": False,
+            "properties": {
+                "status": {"type": "string", "enum": ["completed", "blocked"]},
+                "candidate_revision": {"type": "string"},
+                "changed_files": {"type": "array", "items": {"type": "string"}},
+                "commands": {"type": "array", "items": {"type": "object"}},
+                "unresolved": {"type": "array", "items": {"type": "string"}},
+                "summary": {"type": "string"},
+            },
+            "required": ["status", "candidate_revision", "changed_files", "commands", "unresolved", "summary"],
+        }))
+        atomic_write(prompt_file, contract.read_text(encoding="utf-8") +
+                     "\nReturn the delivery as structured_output matching the supplied schema. Do not write the delivery file.\n")
+        command = [sys.executable, str(adapter), "start", "--agent", "agy", "--write",
+                   "--workdir", str(workdir), "--prompt-file", str(prompt_file),
+                   "--output-schema", str(schema_file), "--state-dir", str(state_dir),
+                   "--job-id", job["session_id"],
+                   "--timeout", str(args.timeout), "--json"]
+    # Persist the attempt before launch: a host timeout is not evidence that
+    # the worker stopped, and must never reopen the round automatically.
+    goal.data.setdefault("jobs", []).append(job)
+    goal.set_state("implementing" if args.role == "implementer" else "reviewing")
+    goal.save()
     try:
         proc = subprocess.run(
             command,
             capture_output=True,
             text=True,
-            timeout=args.timeout,
+            timeout=args.timeout + 10 if args.agent == "agy" else args.timeout,
             env={**os.environ, **(args.transport_env or {})},
         )
     except subprocess.TimeoutExpired:
@@ -406,18 +461,24 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
             f"{proc.stderr.strip()[:200] or proc.stdout.strip()[:200]}"
         )
 
-    job = {
-        "round_id": args.round,
-        "role": args.role,
+    if not isinstance(envelope, dict):
+        fail("transport envelope must be an object; attempt remains unknown")
+    if args.agent == "agy":
+        if envelope.get("job_id") != job["session_id"] or envelope.get("workdir") != str(workdir):
+            fail("native transport identity/workdir mismatch; attempt remains unknown")
+        if envelope.get("status") == "completed" and isinstance(envelope.get("structured_output"), dict):
+            atomic_write(workdir / result_rel, json.dumps(envelope["structured_output"]))
+        envelope["session_id"] = envelope.get("job_id")
+        envelope["worker_exit_code"] = envelope.get("exit_code")
+        job["activity"] = envelope.get("activity")
+        job["conversation_id"] = envelope.get("thread_id")
+    job.update({
         "session_id": envelope.get("session_id"),
         "agent": envelope.get("agent", args.agent),
-        "dispatched_at": now_iso(),
         "transport_status": envelope.get("status"),
         "worker_exit_code": envelope.get("worker_exit_code"),
         "result_artifact": envelope.get("result_artifact", {}).get("status"),
-    }
-    goal.data.setdefault("jobs", []).append(job)
-    goal.set_state("implementing" if args.role == "implementer" else "reviewing")
+    })
     goal.save()
     return {
         "command": "dispatch",
@@ -441,6 +502,28 @@ def validate_envelope(role: str, payload: object) -> list[str]:
         errors.append(f"unsupported schema_version {payload.get('schema_version')!r}")
     if payload.get("role") != role:
         errors.append(f"role is {payload.get('role')!r}, expected {role!r}")
+    arrays = ("changed_files", "commands", "unresolved") if role == "implementer" else (
+        "checks", "blockers", "spec_uncertainties", "infrastructure_errors")
+    for field in arrays:
+        if not isinstance(payload.get(field), list):
+            errors.append(f"{field} must be an array")
+    objects = "commands" if role == "implementer" else "checks"
+    if isinstance(payload.get(objects), list) and any(not isinstance(item, dict) for item in payload[objects]):
+        errors.append(f"{objects} entries must be objects")
+    if role == "reviewer" and isinstance(payload.get("checks"), list):
+        for check in payload["checks"]:
+            if not isinstance(check, dict):
+                continue
+            if not isinstance(check.get("id"), str) or check.get("kind") not in {"open", "withheld"}:
+                errors.append("checks require string id and open/withheld kind")
+            if type(check.get("required")) is not bool or type(check.get("passed")) is not bool:
+                errors.append("checks required/passed must be booleans")
+            for field in ("evidence", "evidence_ref"):
+                if field in check and not isinstance(check[field], str):
+                    errors.append(f"check {field} must be a string")
+    for field in ("round_id", "candidate_revision", "summary"):
+        if field in payload and not isinstance(payload[field], str):
+            errors.append(f"{field} must be a string")
     if role == "implementer":
         if payload.get("status") not in {"completed", "blocked"}:
             errors.append(f"implementation status {payload.get('status')!r} invalid")
@@ -471,12 +554,27 @@ def mechanical_go(payload: dict) -> bool:
 def cmd_collect(args: argparse.Namespace) -> dict:
     goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     job = find_job(goal, args.round, args.role)
+    native = refresh_native_job(goal, job)
+    if job.get("transport_status") not in {"completed", "failed", "cancelled", "timeout"}:
+        fail("cannot collect an active or unknown attempt; establish terminal transport state first")
+    if native and job.get("transport_status") != "completed":
+        fail("native execution did not complete successfully; treat this attempt as infrastructure failure")
     rel = (
         f"deliveries/{args.round}.json"
         if args.role == "implementer"
         else f"reviews/{args.round}.json"
     )
     artifact = goal.dir / rel
+    if native and job.get("transport_status") == "completed" and isinstance(native.get("structured_output"), dict):
+        if not artifact.exists():
+            atomic_write(artifact, json.dumps(native["structured_output"]))
+        else:
+            try:
+                stored = json.loads(artifact.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                stored = None
+            if stored != native["structured_output"]:
+                fail("delivery differs from this job's native structured result")
     entry = goal.round_entry(args.round)
     outcome: dict
     if not artifact.is_file():
@@ -598,6 +696,10 @@ def cmd_retry(args: argparse.Namespace) -> dict:
         {"implementing"} if args.role == "implementer" else {"reviewing"},
         f"retry a {args.role} dispatch",
     )
+    job = find_job(goal, args.round, args.role)
+    refresh_native_job(goal, job)
+    if job.get("transport_status") not in {"completed", "failed", "cancelled", "timeout"}:
+        fail("cannot retry an active or unknown attempt; verify the old worker stopped first")
     # The transport refuses a result path that already exists (anti-stale).
     # Set a failed attempt's artifact aside at the goal root so the redispatch
     # is not blocked and the evidence survives.
@@ -631,10 +733,22 @@ def cmd_retry(args: argparse.Namespace) -> dict:
     }
 
 
+def ensure_runtime_ignore(workdir: Path) -> None:
+    """Keep runtime output untracked without editing the repository ignore file."""
+    runtime_dir = workdir / ".coordinator"
+    runtime_dir.mkdir(exist_ok=True)
+    ignore_file = runtime_dir / ".gitignore"
+    existing = ignore_file.read_text(encoding="utf-8") if ignore_file.exists() else ""
+    if existing.splitlines()[-1:] == ["*"]:
+        return
+    separator = "\n" if existing and not existing.endswith("\n") else ""
+    atomic_write(ignore_file, existing + separator + "*\n")
+
+
 def cmd_archive(args: argparse.Namespace) -> dict:
     goal = Goal(Path(args.workdir).resolve(), args.goal_id)
-    skill_dir = Path(__file__).resolve().parents[1]
-    sink = skill_dir / "goals" / args.goal_id
+    ensure_runtime_ignore(Path(args.workdir).resolve())
+    sink = goal.dir.parent / "archives" / args.goal_id
     if sink.exists() and not args.force:
         fail(f"archive {sink} already exists; pass --force to overwrite")
     sink.mkdir(parents=True, exist_ok=True)
@@ -683,8 +797,32 @@ def cmd_archive(args: argparse.Namespace) -> dict:
     }
 
 
+def refresh_native_job(goal: Goal, job: dict) -> dict | None:
+    """Inspect a reserved job without starting/resuming a provider turn."""
+    if job.get("agent") != "agy" or not job.get("adapter"):
+        return None
+    state_dir = private_dir(goal.data["goal_id"]) / "transport"
+    job["transport_status"] = "unknown"
+    try:
+        proc = subprocess.run([sys.executable, job["adapter"], "status", job["session_id"],
+                               "--state-dir", str(state_dir), "--json"],
+                              capture_output=True, text=True, timeout=10)
+        native = json.loads(proc.stdout)
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return None
+    if not isinstance(native, dict) or native.get("job_id") != job["session_id"] or native.get("workdir") != str(goal.dir.parent.parent):
+        return None
+    job["transport_status"] = native.get("status")
+    job["activity"] = native.get("activity")
+    job["conversation_id"] = native.get("thread_id")
+    job["worker_exit_code"] = native.get("exit_code")
+    return native
+
+
 def cmd_status(args: argparse.Namespace) -> dict:
     goal = Goal(Path(args.workdir).resolve(), args.goal_id)
+    for job in goal.data.get("jobs", []):
+        refresh_native_job(goal, job)
     return {
         "command": "status",
         "goal_id": args.goal_id,

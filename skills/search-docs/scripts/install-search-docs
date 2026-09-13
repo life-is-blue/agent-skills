@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+installer_source="${BASH_SOURCE[0]}"
+while [[ -L "$installer_source" ]]; do
+  installer_dir="$(cd -P -- "$(dirname -- "$installer_source")" && pwd)"
+  installer_source="$(readlink -- "$installer_source")"
+  [[ "$installer_source" == /* ]] || installer_source="${installer_dir}/${installer_source}"
+done
+script_dir="$(cd -P -- "$(dirname -- "$installer_source")" && pwd)"
 source_skill="$(cd -- "${script_dir}/.." && pwd)"
 target="codex"
 skill_root=""
@@ -62,8 +68,12 @@ case "$target" in
     ;;
 esac
 
-installed_skill="${skill_root}/search-docs"
-target_cli="${bin_dir}/search-docs"
+canonical_path() {
+  python3 - "$1" <<'PY'
+import pathlib, sys
+print(pathlib.Path(sys.argv[1]).expanduser().resolve())
+PY
+}
 
 verify_bundle() {
   local bundle="$1"
@@ -86,6 +96,10 @@ command -v python3 >/dev/null 2>&1 || {
   echo "Missing dependency: python3 (required for installation verification)." >&2
   exit 1
 }
+skill_root="$(canonical_path "$skill_root")"
+bin_dir="$(canonical_path "$bin_dir")"
+installed_skill="${skill_root}/search-docs"
+target_cli="${bin_dir}/search-docs"
 verify_bundle "$source_skill"
 
 if [[ "$check_only" == true ]]; then
@@ -93,7 +107,7 @@ if [[ "$check_only" == true ]]; then
     echo "search-docs installation drift: ${installed_skill}" >&2
     exit 1
   fi
-  if [[ ! -L "$target_cli" || "$(readlink -f "$target_cli")" != "$(readlink -f "$installed_skill/scripts/search-docs")" ]]; then
+  if [[ ! -L "$target_cli" || "$(canonical_path "$target_cli")" != "$(canonical_path "$installed_skill/scripts/search-docs")" ]]; then
     echo "search-docs CLI link drift: ${target_cli}" >&2
     exit 1
   fi
@@ -104,7 +118,7 @@ fi
 
 mkdir -p "$skill_root" "$bin_dir"
 
-if [[ "$(readlink -f "$source_skill")" == "$(readlink -f "$installed_skill" 2>/dev/null || true)" ]]; then
+if [[ "$(canonical_path "$source_skill")" == "$(canonical_path "$installed_skill")" ]]; then
   verify_bundle "$installed_skill"
   ln -sfn "$installed_skill/scripts/search-docs" "$target_cli"
   echo "search-docs already installed: ${installed_skill}"

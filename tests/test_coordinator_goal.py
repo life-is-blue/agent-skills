@@ -349,7 +349,7 @@ def test_completed_requires_mechanical_go(tmp_path: Path):
     assert "mechanical go" in proc.stderr
 
 
-def test_archive_copies_receipt_bundle_to_skill_runs(tmp_path: Path):
+def test_archive_copies_receipt_bundle_to_worktree(tmp_path: Path):
     init_run(tmp_path)
     transport = make_transport(tmp_path)
     freeze_round(tmp_path, transport)
@@ -362,7 +362,7 @@ def test_archive_copies_receipt_bundle_to_skill_runs(tmp_path: Path):
     archived = payload(run_goal("archive", "--workdir", tmp_path,
                                        "--goal-id", "r1"))
     sink = Path(archived["archived_to"])
-    assert sink.parent == (ROOT / "skills" / "coordinator" / "goals")
+    assert sink.parent == (tmp_path / ".coordinator" / "archives")
     assert (sink / "goal.json").is_file()
     assert (sink / "ledger.json").is_file()
     assert (sink / "contracts" / "round-1.md").is_file()
@@ -378,8 +378,41 @@ def test_archive_copies_receipt_bundle_to_skill_runs(tmp_path: Path):
     forced = run_goal("archive", "--workdir", tmp_path, "--goal-id", "r1",
                              "--force")
     assert payload(forced)["state"] == "completed"
-    import shutil
-    shutil.rmtree(sink)
+
+
+def test_generated_runtime_ignore_preserves_root_policy(tmp_path: Path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    root_ignore = tmp_path / ".gitignore"
+    root_ignore.write_text("existing-policy\n")
+    runtime = tmp_path / ".coordinator"
+    runtime.mkdir()
+    nested_ignore = runtime / ".gitignore"
+    nested_ignore.write_text("# user policy\n!keep.json\n")
+    init_run(tmp_path)
+    assert root_ignore.read_text() == "existing-policy\n"
+    assert nested_ignore.read_text() == "# user policy\n!keep.json\n*\n"
+    for relative in (".coordinator/r1/goal.json", ".coordinator/.gitignore"):
+        ignored = subprocess.run(["git", "-C", str(tmp_path), "check-ignore", relative],
+                                 capture_output=True, text=True)
+        assert ignored.returncode == 0, ignored.stderr
+    before = nested_ignore.read_bytes()
+    run_goal("init", "--workdir", tmp_path, "--goal-id", "r2", "--objective", "second")
+    assert nested_ignore.read_bytes() == before
+
+
+def test_runtime_ignore_does_not_untrack_existing_files(tmp_path: Path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    runtime = tmp_path / ".coordinator"
+    runtime.mkdir()
+    tracked = runtime / "existing.txt"
+    tracked.write_text("already tracked\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", ".coordinator/existing.txt"], check=True)
+    index = subprocess.run(["git", "-C", str(tmp_path), "ls-files", "--stage"],
+                           check=True, capture_output=True, text=True).stdout
+    init_run(tmp_path)
+    after = subprocess.run(["git", "-C", str(tmp_path), "ls-files", "--stage"],
+                           check=True, capture_output=True, text=True).stdout
+    assert after == index
 
 
 def test_human_gate_parks_and_resumes(tmp_path: Path):

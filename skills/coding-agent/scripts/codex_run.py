@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Run Codex CLI as a monitored job and return a stable JSON result envelope."""
+"""Run Codex or agy as a monitored job with a stable JSON result envelope."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import select
 import shutil
 import signal
 import subprocess
@@ -120,8 +121,8 @@ def ensure_codex_available() -> str:
 # --------------------------------------------------------------------------
 
 
-def reduce_events(events_file: Path) -> dict:
-    """Fold the `codex exec --json` event stream into the result envelope fields."""
+def reduce_events(events_file: Path, agent: str = "codex") -> dict:
+    """Fold provider events into observations, not acceptance evidence."""
     reduced: dict = {
         "thread_id": None,
         "final_message": None,
@@ -132,6 +133,8 @@ def reduce_events(events_file: Path) -> dict:
         "phase": None,
         "errors": [],
         "unparsed_lines": 0,
+        "tool_updates": 0,
+        "text_updates": 0,
     }
     if not events_file.is_file():
         return reduced
@@ -148,6 +151,21 @@ def reduce_events(events_file: Path) -> dict:
             continue
         if not isinstance(event, dict):
             reduced["unparsed_lines"] += 1
+            continue
+
+        if agent == "agy":
+            reduced["thread_id"] = event.get("conversation_id") or reduced["thread_id"]
+            if event.get("event") == "step_update":
+                reduced["text_updates"] += bool(event.get("text_delta"))
+                reduced["tool_updates"] += event.get("step_type") == "tool"
+                reduced["phase"] = "investigating"
+            if event.get("event") == "result":
+                output = event.get("structured_output")
+                reduced["final_message"] = json.dumps(output) if output is not None else event.get("response")
+                reduced["phase"] = "done" if event.get("status") == "SUCCESS" else "failed"
+                reduced["usage"] = event.get("usage")
+                if event.get("status") != "SUCCESS":
+                    reduced["errors"].append({"message": str(event.get("error") or event.get("status"))})
             continue
 
         event_type = str(event.get("type", ""))
@@ -174,6 +192,7 @@ def reduce_events(events_file: Path) -> dict:
         item_type = str(item.get("type", ""))
 
         if item_type == "agent_message":
+            reduced["text_updates"] += 1
             if event_type == "item.completed":
                 text = item.get("text")
                 if isinstance(text, str) and text.strip():
@@ -197,6 +216,7 @@ def reduce_events(events_file: Path) -> dict:
                     reduced["touched_files"].append({"path": path, "kind": str(kind)})
             continue
         if item_type == "command_execution":
+            reduced["tool_updates"] += 1
             reduced["phase"] = "running"
             if event_type == "item.completed":
                 reduced["commands"].append(
@@ -219,7 +239,7 @@ def reduce_events(events_file: Path) -> dict:
 
 def refresh_envelope(job: dict, job_dir: Path) -> dict:
     """Merge stored job metadata with the current event stream."""
-    reduced = reduce_events(job_dir / "events.jsonl")
+    reduced = reduce_events(job_dir / "events.jsonl", job.get("agent", "codex"))
     final_file = job_dir / "final.txt"
     final_message = reduced["final_message"]
     if final_file.is_file():
@@ -246,7 +266,8 @@ def refresh_envelope(job: dict, job_dir: Path) -> dict:
     errors.extend(reduced["errors"])
     envelope["errors"] = errors
     thread_id = envelope.get("thread_id")
-    envelope["resume_command"] = f"codex exec resume {thread_id}" if thread_id else None
+    resume_prefix = "agy --conversation" if job.get("agent") == "agy" else "codex exec resume"
+    envelope["resume_command"] = f"{resume_prefix} {thread_id}" if thread_id else None
 
     if envelope.get("status") == "running" and not process_alive(job.get("pid")):
         envelope["status"] = "lost"
@@ -258,6 +279,17 @@ def refresh_envelope(job: dict, job_dir: Path) -> dict:
         except json.JSONDecodeError:
             structured = None
     envelope["structured_output"] = structured
+    events_path = job_dir / "events.jsonl"
+    envelope["activity"] = {
+        "event_bytes": events_path.stat().st_size if events_path.exists() else 0,
+        "last_event_mtime": events_path.stat().st_mtime if events_path.exists() else None,
+        "completed_commands": len(reduced["commands"]),
+        "agent_messages": reduced["agent_messages"],
+        "worker_alive": process_alive(job.get("pid")),
+        "child_alive": process_alive(job.get("child_pid")),
+        "tool_updates": reduced.get("tool_updates"),
+        "text_updates": reduced.get("text_updates"),
+    }
     return envelope
 
 
@@ -267,6 +299,16 @@ def refresh_envelope(job: dict, job_dir: Path) -> dict:
 
 
 def build_codex_argv(job: dict) -> list[str]:
+    if job.get("agent") == "agy":
+        argv = ["agy", "--input-format", "stream-json", "--output-format", "stream-json",
+                "--add-dir", job["workdir"], "--mode", "accept-edits", "--sandbox"]
+        if job.get("output_schema"):
+            argv += ["--json-schema", job["output_schema"]]
+        if job.get("resume_thread_id"):
+            argv += ["--conversation", job["resume_thread_id"]]
+        if job.get("model"):
+            argv += ["--model", job["model"]]
+        return argv
     argv = ["codex", "-C", job["workdir"]]
     if job["sandbox"] == "danger-full-access":
         argv.append("--dangerously-bypass-approvals-and-sandbox")
@@ -315,10 +357,12 @@ def resolve_resume_thread(state_dir: Path, workdir: Path) -> str:
             continue
         if job.get("workdir") != str(workdir):
             continue
+        if job.get("agent", "codex") != "codex":
+            continue
         envelope = refresh_envelope(job, entry)
         if not envelope.get("thread_id"):
             continue
-        if envelope.get("status") in {"queued", "running"}:
+        if envelope.get("status") not in TERMINAL_STATUSES:
             raise InputError(
                 f"job {job.get('job_id')} is still active in {workdir}; wait or cancel it before resuming"
             )
@@ -358,6 +402,24 @@ def restore_interrupt_handlers(previous: dict[int, object]) -> None:
             signal.signal(sig, handler)
         except (ValueError, TypeError):
             pass
+
+
+def deliver_prompt(proc: subprocess.Popen, prompt: bytes, deadline: float | None) -> None:
+    """Bound stdin delivery too: a worker may never read its prompt."""
+    fd = proc.stdin.fileno()
+    os.set_blocking(fd, False)
+    pending = memoryview(prompt)
+    while pending:
+        remaining = deadline - time.monotonic() if deadline is not None else None
+        if remaining is not None and remaining <= 0:
+            raise subprocess.TimeoutExpired(proc.args, 0)
+        if not select.select([], [fd], [], remaining)[1]:
+            raise subprocess.TimeoutExpired(proc.args, 0)
+        try:
+            pending = pending[os.write(fd, pending[:65536]):]
+        except BlockingIOError:
+            continue
+    proc.stdin.close()
 
 
 def finalize_job(
@@ -401,6 +463,7 @@ def execute_job(job_dir: Path) -> dict:
     write_json(job_dir / "job.json", job)
 
     started = time.monotonic()
+    deadline = started + job["timeout_seconds"] if job.get("timeout_seconds") else None
     proc: subprocess.Popen | None = None
     # Handlers go up before the launch so a signal can never orphan Codex.
     previous_handlers = install_interrupt_handlers()
@@ -431,17 +494,18 @@ def execute_job(job_dir: Path) -> dict:
             prompt_delivered = True
             if job.get("has_prompt") and proc.stdin is not None:
                 try:
-                    proc.stdin.write(prompt_file.read_bytes())
-                    proc.stdin.close()
+                    prompt_bytes = prompt_file.read_bytes()
+                    if job.get("agent") == "agy":
+                        prompt_bytes = (json.dumps({"event": "user", "message": {"content": prompt_bytes.decode("utf-8")}}) + "\n").encode("utf-8")
+                    deliver_prompt(proc, prompt_bytes, deadline)
                 except OSError as exc:
                     prompt_delivered = False
                     job.setdefault("errors", []).append(
                         {"message": f"codex closed stdin before the prompt was delivered: {exc}"}
                     )
 
-            timeout = job.get("timeout_seconds")
             try:
-                returncode = proc.wait(timeout=timeout if timeout else None)
+                returncode = proc.wait(timeout=max(0, deadline - time.monotonic()) if deadline else None)
                 status = "completed" if returncode == 0 else "failed"
                 exit_code = EXIT_OK if returncode == 0 else EXIT_FAILED
             except subprocess.TimeoutExpired:
@@ -449,6 +513,11 @@ def execute_job(job_dir: Path) -> dict:
                 proc.wait()
                 returncode = proc.returncode
                 status, exit_code = "timeout", EXIT_TIMEOUT
+    except subprocess.TimeoutExpired:
+        if proc is not None:
+            terminate_process_group(proc.pid)
+            proc.wait()
+        return finalize_job(job, job_dir, "timeout", EXIT_TIMEOUT, proc.returncode if proc else None, started)
     except (Interrupted, KeyboardInterrupt):
         if proc is not None:
             terminate_process_group(proc.pid)
@@ -462,6 +531,11 @@ def execute_job(job_dir: Path) -> dict:
 
     if status == "completed" and not prompt_delivered:
         status, exit_code = "failed", EXIT_FAILED
+    if status == "completed" and job.get("agent") == "agy":
+        observed = refresh_envelope(job, job_dir)
+        if observed.get("phase") != "done":
+            job.setdefault("errors", []).append({"message": "agy exited without a SUCCESS result"})
+            status, exit_code = "failed", EXIT_FAILED
 
     return finalize_job(job, job_dir, status, exit_code, returncode, started)
 
@@ -556,7 +630,7 @@ def pid_belongs_to_job(pid: int | None, job_dir: Path) -> bool:
     """
     if not pid or not process_alive(pid):
         return False
-    markers = [str(job_dir), str(job_dir / "final.txt")]
+    markers = [str(job_dir), str(job_dir / "final.txt"), str(job_dir / "output-schema.json")]
 
     argv = proc_argv(int(pid))
     if argv is not None:
@@ -574,10 +648,14 @@ def pid_belongs_to_job(pid: int | None, job_dir: Path) -> bool:
 
 
 def create_job(state_dir: Path, kind: str, workdir: Path, prompt: str | None, options: dict) -> Path:
-    job_id = f"{kind}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{os.getpid()}"
+    job_id = options.get("job_id") or f"{kind}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{os.getpid()}"
+    if "/" in job_id or job_id.startswith(".") or not job_id:
+        raise InputError("invalid job id")
     job_dir = state_dir / "jobs" / job_id
     suffix = 0
     while job_dir.exists():
+        if options.get("job_id"):
+            raise InputError(f"job already exists: {job_id}; inspect it instead of relaunching")
         suffix += 1
         job_dir = state_dir / "jobs" / f"{job_id}-{suffix}"
     job_dir.mkdir(parents=True)
@@ -585,12 +663,18 @@ def create_job(state_dir: Path, kind: str, workdir: Path, prompt: str | None, op
 
     if prompt is not None:
         (job_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
+    if options.get("agent") == "agy":
+        schema_file = job_dir / "output-schema.json"
+        schema_file.write_text(Path(options["output_schema"]).read_text(encoding="utf-8")
+                               if options.get("output_schema") else '{"type":"object"}', encoding="utf-8")
+        options = {**options, "output_schema": str(schema_file)}
 
     job = {
         "schema_version": SCHEMA_VERSION,
         "job_id": job_id,
         "job_dir": str(job_dir),
         "kind": kind,
+        "agent": options.get("agent", "codex"),
         "status": "queued",
         "phase": "queued",
         "exit_code": None,
@@ -705,18 +789,29 @@ def exit_code_for(envelope: dict) -> int:
 
 
 def start_like(args: argparse.Namespace, kind: str) -> int:
-    ensure_codex_available()
+    agent = getattr(args, "agent", "codex")
+    if agent == "codex":
+        ensure_codex_available()
+    elif shutil.which(agent) is None:
+        raise InputError(f"{agent} CLI not found on PATH")
+    if agent == "agy" and (not args.write or args.unsafe or args.resume_last):
+        raise InputError("agy requires --write; read-only, unsafe and resume-last are not supported")
+    if args.timeout is not None and args.timeout <= 0:
+        raise InputError("--timeout must be positive")
     state_dir = resolve_state_dir(args.state_dir)
     workdir = Path(args.workdir).resolve()
     if not workdir.is_dir():
         raise InputError(f"workdir does not exist: {workdir}")
-    ensure_git_repository(workdir)
+    if agent == "codex":
+        ensure_git_repository(workdir)
 
     options = {
+        "agent": agent,
+        "job_id": getattr(args, "job_id", None),
         "sandbox": resolve_sandbox(getattr(args, "write", False), getattr(args, "unsafe", False)),
         "model": getattr(args, "model", None),
         "effort": getattr(args, "effort", None),
-        "timeout_seconds": args.timeout,
+        "timeout_seconds": args.timeout if args.timeout is not None else (3600 if agent == "agy" else None),
     }
 
     if kind == "review":
@@ -748,6 +843,16 @@ def start_like(args: argparse.Namespace, kind: str) -> int:
             options["resume_thread_id"] = resolve_resume_thread(state_dir, workdir)
         elif args.resume:
             options["resume_thread_id"] = args.resume
+            if agent == "agy":
+                matches = []
+                for job_file in (state_dir / "jobs").glob("*/job.json"):
+                    recorded = read_job(job_file.parent)
+                    observed = refresh_envelope(recorded, job_file.parent)
+                    if observed.get("thread_id") == args.resume:
+                        matches.append(observed)
+                if not matches or any(item.get("agent") != agent or item.get("workdir") != str(workdir)
+                                      or item.get("status") not in TERMINAL_STATUSES for item in matches):
+                    raise InputError("agy resume requires a recorded terminal conversation in this workdir")
         if options.get("resume_thread_id"):
             kind = "resume"
 
@@ -856,6 +961,13 @@ def cmd_cancel(args: argparse.Namespace) -> int:
     if job.get("status") in TERMINAL_STATUSES:
         emit(refresh_envelope(job, job_dir), args.json)
         return EXIT_OK
+    candidates = (job.get("child_pid"), read_worker_pid(job_dir), job.get("pid"))
+    if job.get("agent") == "agy" and refresh_envelope(job, job_dir).get("status") == "lost":
+        raise InputError("agy worker was lost; inspect its child/remote work before reconciling cancellation")
+    if job.get("agent") == "agy" and any(process_alive(pid) for pid in candidates) and not any(
+        pid_belongs_to_job(pid, job_dir) for pid in candidates
+    ):
+        raise InputError("cannot identify the live agy job safely; cancellation state remains unknown")
 
     # Mark the job first so a worker that is still starting refuses to launch Codex.
     write_json(
@@ -864,7 +976,7 @@ def cmd_cancel(args: argparse.Namespace) -> int:
     )
 
     # Prefer the Codex process group; the worker traps the signal and finalizes.
-    for candidate in (job.get("child_pid"), read_worker_pid(job_dir), job.get("pid")):
+    for candidate in candidates:
         if pid_belongs_to_job(candidate, job_dir):
             terminate_process_group(int(candidate))
             break
@@ -945,8 +1057,10 @@ def build_parser() -> argparse.ArgumentParser:
         target.add_argument("--state-dir")
         target.add_argument("--json", action="store_true")
 
-    start = sub.add_parser("start", help="run a Codex task")
+    start = sub.add_parser("start", help="run a structured Codex or agy task")
     start.add_argument("--workdir", required=True)
+    start.add_argument("--agent", choices=["codex", "agy"], default="codex")
+    start.add_argument("--job-id", help="reserve an explicit local job identity; existing ids are refused")
     start.add_argument("--prompt-file")
     start.add_argument("--prompt")
     start.add_argument("--write", action="store_true", help="allow workspace-write edits")

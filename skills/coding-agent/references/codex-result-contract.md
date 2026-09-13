@@ -49,6 +49,13 @@ text rendering of the same fields.
 
 Field notes:
 
+- `agent` identifies the provider (`codex` by default, or explicit `agy`).
+  For agy, `thread_id` holds the native conversation ID, not the local job ID;
+  `codex_exit_code` retains its legacy name for the raw provider exit code.
+- `activity` contains event bytes/mtime, text/tool update counts, completed
+  command/message counts and local worker/child presence. These are observations,
+  not proof of useful progress or successful acceptance. Compare snapshots and
+  corroborate the claimed operation. See [agy](agy.md) for protocol limitations.
 - `kind` is `task`, `resume`, or `review`. Passing `--resume`/`--resume-last`
   turns a `start` into a `resume` job.
 - `status` is `queued`, `running`, `completed`, `failed`, `cancelled`,

@@ -5,6 +5,32 @@ between compatible hosts. The coordinator owns the state machine. A transport
 reports execution facts; an implementer reports a candidate; a reviewer reports
 evidence. None of those reports advances the goal by itself.
 
+## Interrupted dispatch and stalled workers
+
+Dispatch records an unknown attempt before launching. A transport timeout or
+malformed transport response leaves that attempt in place, not ready for retry.
+`collect` and `retry` refuse active/unknown attempts. For agy, the reserved local
+job ID is persisted before launch; `status` inspects its local state without a
+provider call, and `collect` materializes a terminal structured delivery. The
+job ID and provider conversation ID are different identities. Keep
+`COORDINATOR_STATE_DIR` in an approved private location; agy raw output remains
+there under the goal's `transport/jobs` directory.
+
+Use the structured runner's status/logs/wait/cancel with that ID and state root
+to recover. A missing manifest or `lost` status is unknown, not safely stopped.
+Confirm process and any claimed detached/remote work have quiesced before a
+new dispatch; explicit provider resume starts a new turn. Legacy plain-log
+unknown attempts require inspecting their transport state and reconciling the
+record; never change unknown to terminal from the worker's prose alone.
+
+Compare observations over a task-appropriate interval: native events, completed
+tool results, process CPU-time delta, the claimed port and expected artifact
+changes. Do not conflate text streaming with useful progress or automatically
+kill from low CPU/file silence. Diagnose the claimed operation, retain evidence,
+and enforce the declared execution/time/cost bound. Wait timeouts do not reset
+execution bounds. A zero exit code or terminal result still requires envelope
+validation and independent acceptance evidence.
+
 ## Coordinator states
 
 Record one of these states in `goal.json`:
@@ -55,9 +81,13 @@ revision, current round, chosen transport, and update time. `ledger.json` record
 each bounded dispatch, dependencies, state, and the gates it established. Keep
 both as current state, not an event log.
 
-These files are visible to roles that can read the worktree. Do not automatically
-commit them or edit `.gitignore`; follow the target repository's runtime-artifact
-policy. Put withheld checks and raw transport logs in the host state directory,
+These files are visible to roles that can read the worktree. `init` and `archive`
+generate `.coordinator/.gitignore` with `*` to ignore the whole runtime directory,
+including the ignore file itself. Existing contents are preserved and the rule
+is appended only if needed. The repository's root ignore file and Git index are
+not changed; already tracked files remain tracked and need a separately
+authorized cleanup. Do not automatically commit runtime output. Put withheld
+checks and raw transport logs in the host state directory,
 keyed by the same goal ID. Never copy credentials into either location.
 
 Reviewer contracts and their runner-materialized prompts use host-private state
@@ -75,8 +105,10 @@ read contracts and constraints while the goal is live, and it carries no
 long-term obligation. When a goal reaches a terminal state, archive the receipt
 bundle (`goal.json`, `ledger.json`, `constraints.md`, contracts, deliveries,
 reviews) with `coordinator_goal.py archive`, which copies it to
-`skills/coordinator/goals/<goal-id>/` — the skill's own directory, gitignored
-upstream. At closeout it also copies private reviewer contracts and prompts into
+`.coordinator/archives/<goal-id>/` in the target worktree, covered by the generated
+ignore rule. It never writes the Skill installation directory. Existing archives
+there are left in place, not migrated automatically. At closeout it also copies
+private reviewer contracts and prompts into
 the receipt bundle's `contracts/` directory, where withheld checks are
 declassified. That archive is the long-term, traceable record and the raw material
 for later skill evolution; the worktree copy may then be cleaned up by the

@@ -9,7 +9,7 @@ its scripts and references remain available.
 | Skill | Type | Purpose |
 |---|---|---|
 | `branded-pptx` | bundled | Build decks from an outline on your own .pptx template, with layout verification |
-| `coding-agent` | adapter | Run Codex, Claude Code, TClaude, CodeBuddy Code, or OpenCode as monitored background workers, with a structured Codex mode returning a machine-readable result envelope |
+| `coding-agent` | adapter | Run supported coding CLIs as monitored workers, with structured Codex and agy modes returning machine-readable result envelopes |
 | `coordinator` | adapter | The coordinating agent's control-plane playbook: grill vague requirements, freeze task briefs, and run multi-round verified loops; bundles the state-machine runner that drives the coding-agent transport |
 | `office-mpp` | bundled | Read, analyze, export, create, and edit Microsoft Project or MSPDI files |
 | `openclaw-coding-agent` | adapter | Run supported coding CLIs through OpenClaw sessions and notifications |
@@ -77,7 +77,9 @@ validation, and dispatch, and never adjudicates. What it does not ship is a
 transport adapter: a host supplies the repository's `coding-agent` adapter,
 another monitored CLI adapter, or a native subagent API. A multi-round run
 defaults to `.coordinator/<goal-id>/` for role-visible state; withheld checks
-and raw transport state stay outside the repository. Transport success,
+and raw transport state stay outside the repository. The runtime directory
+generates its own ignore file; receipts stay in `.coordinator/archives/<goal-id>/`,
+not the Skill installation. Transport success,
 implementation delivery, and acceptance are three separate claims, and only
 the coordinator advances the run state.
 

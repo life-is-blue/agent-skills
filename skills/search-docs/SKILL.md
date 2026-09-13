@@ -11,6 +11,26 @@ Route → retrieve → read source → answer. Minimal calls.
 ## Config
 The producer-owned machine contract is [references/capability-contract.json](references/capability-contract.json); its pinned source, commit, hash, and license are in [references/capability-provenance.json](references/capability-provenance.json). Do not copy numeric policy into this file or infer it from prose. Read the contract when thresholds, budgets, or tool compatibility affect the task.
 
+## Local entrypoint
+
+Copying or symlinking the Skill does not install a command on PATH. Resolve
+the directory of the **loaded SKILL.md** (not the task's working directory or
+a guessed client location), then use the bundled entrypoint for every call:
+
+```bash
+SEARCH_DOCS_SKILL_DIR=/absolute/path/to/loaded/search-docs
+search_docs() { bash "$SEARCH_DOCS_SKILL_DIR/scripts/search-docs" "$@"; }
+search_docs doctor --offline
+```
+
+The examples below use this shell function. Across separate shell/tool calls,
+define it again or call `bash "$SEARCH_DOCS_SKILL_DIR/scripts/search-docs"`
+directly; functions and variables need not persist. Do not reinstall or edit
+shell configuration just because the bare command is missing. Installation is
+optional and requires authorization for its destination and CLI link; read
+`scripts/install-search-docs --help` first. For caching calls, set
+`GIT_LIBRARY_CACHE` to an approved runtime location if the default is out of scope.
+
 ## Search Response Schema
 Each search result contains:
 - `path`: Document path within library (e.g., "guides/setup.md")
@@ -32,20 +52,20 @@ Wrapper payload includes:
 ## Workflow: Navigate → Search → Probe → Fallback
 
 ### Navigate (preferred)
-Already know the path? `search-docs read LIB_ID/PATH.md`
+Already know the path? `search_docs read LIB_ID/PATH.md`
 
 ### Search (default)
 1. Route to one primary library (explicit product/library mention wins).
 2. Search inside that library:
 ```bash
-search-docs search "QUERY" --library LIBRARY_ID --limit 8 --catalog-mode none
+search_docs search "QUERY" --library LIBRARY_ID --limit 8 --catalog-mode none
 ```
 3. Check response confidence. Read top 1-3 docs before answering.
 
 ### Probe (ambiguity)
 No clear library? Run cross-library probe:
 ```bash
-search-docs search "QUERY" --limit 8
+search_docs search "QUERY" --limit 8
 ```
 If results span multiple libraries with close scores under the contract's ambiguity gate:
 - Interactive: ask only when the library choice would materially change the
@@ -56,37 +76,37 @@ If results span multiple libraries with close scores under the contract's ambigu
 ### Fallback (once)
 Search confidence low? Browse manifest:
 ```bash
-search-docs manifest LIBRARY_ID
+search_docs manifest LIBRARY_ID
 ```
 Navigate topic map → read target doc. No repeated fallback loops.
 
 ## Freshness
 Queries with "latest/new/recent/最新/刚发布":
 ```bash
-search-docs libraries --fresh-for-query "QUERY"
+search_docs libraries --fresh-for-query "QUERY"
 ```
-If routing still weak, `search-docs libraries --refresh` then retry once.
+If routing still weak, `search_docs libraries --refresh` then retry once.
 
 ## Explore Path
 When user asks for structure/topics/coverage (not a concrete answer):
 ```bash
-search-docs libraries
-search-docs manifest LIBRARY_ID
+search_docs libraries
+search_docs manifest LIBRARY_ID
 ```
 Deliver: library positioning, topic distribution, recommended starting docs.
 
 ## Commands
 ```bash
-search-docs health                                    # connectivity check
-search-docs version                                   # bundled contract version
-search-docs doctor --offline                          # local integrity check
-search-docs libraries                                 # list all libraries
-search-docs libraries --fresh-for-query "QUERY"       # freshness-aware list
-search-docs search "Q" --library LIB --limit 8        # targeted search
-search-docs search "Q" --limit 8                      # cross-library search
-search-docs read LIB/PATH.md                          # read full document
-search-docs manifest LIB                              # browse topic map
-search-docs recent --days 7                           # recent updates
+search_docs health                                    # connectivity check
+search_docs version                                   # bundled contract version
+search_docs doctor --offline                          # local integrity check
+search_docs libraries                                 # list all libraries
+search_docs libraries --fresh-for-query "QUERY"        # freshness-aware list
+search_docs search "Q" --library LIB --limit 8         # targeted search
+search_docs search "Q" --limit 8                       # cross-library search
+search_docs read LIB/PATH.md                           # read full document
+search_docs manifest LIB                              # browse topic map
+search_docs recent --days 7                           # recent updates
 ```
 
 ## Anti-Patterns

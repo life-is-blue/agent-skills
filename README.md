@@ -81,7 +81,10 @@ and raw transport state stay outside the repository. The runtime directory
 generates its own ignore file; receipts stay in `.coordinator/archives/<goal-id>/`,
 not the Skill installation. Provider dispatch requires validated role/model
 configuration; `coordinator_goal.py setup` guides the initial choices, then
-`setup --from-file FILE` saves confirmed settings. Transport success,
+`setup --from-file FILE` saves confirmed settings. For Git goals, `workspace
+prepare` creates registered execution/review checkouts under `.coordinator/worktrees/`;
+control commands stay in the repository root. Review snapshots include uncommitted
+candidates without automatically committing or copying ignored files. Transport success,
 implementation delivery, and acceptance are three separate claims, and only
 the coordinator advances the run state.
 

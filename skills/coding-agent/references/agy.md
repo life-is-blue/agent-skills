@@ -60,3 +60,9 @@ blocked external request needs its own evidence, not a local-CPU inference.
 Protocol reference: [official headless documentation](https://antigravity.google/docs/cli/headless/).
 CLI timeout changes: [official changelog](https://antigravity.google/changelog).
 Flags inspected locally on 2026-09-13; no paid smoke was performed.
+
+Workspace adaptation rechecked with local help on 2026-09-14: launch cwd is the
+execution root; `--project` selects an agy project, not a verified Git worktree.
+The runner does not use `--add-dir`, `--new-project` or implicit conversation
+continuation to bridge checkouts. Coordinator native-job status validates the
+recorded worker root separately from the control ledger root.

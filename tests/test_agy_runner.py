@@ -48,6 +48,8 @@ if not os.environ.get("AGY_PARTIAL"):
         "implementer": [{"agent": "agy", "model": "fixture-flash", "effort": "high"}],
         "reviewer": [{"agent": "codex", "model": "fixture-review", "effort": "high"}]}))
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                    "commit", "-q", "--allow-empty", "-m", "fixture"], check=True)
     schema = tmp_path / "schema.json"
     schema.write_text('{"type":"object"}')
     env = {"PATH": f"{binary}:{os.environ['PATH']}",
@@ -101,6 +103,7 @@ def test_unknown_attempt_retains_identity_and_refuses_retry(host):
         return subprocess.run([sys.executable, str(GOAL), *args, "--workdir", str(repo),
             "--goal-id", "unknown", "--json"], capture_output=True, text=True, env=env, timeout=10)
     assert goal("init", "--objective", "fixture").returncode == 0
+    assert goal("workspace", "prepare").returncode == 0
     contract = tmp / "contract.md"
     contract.write_text("Fixture")
     assert goal("freeze", "--role", "implementer", "--round", "r", "--contract", str(contract)).returncode == 0
@@ -153,19 +156,28 @@ def test_background_wait_and_cancel_do_not_start_new_turn(host):
         pytest.fail("cancelled job's provider process is still alive")
 
 
-def test_coordinator_native_dispatch_and_collect(host):
+@pytest.mark.parametrize("local_commits", [False, True])
+def test_coordinator_native_dispatch_and_collect(host, local_commits):
     tmp, repo, _, env = host
+    config_path = repo / ".coordinator/config.json"
+    config = json.loads(config_path.read_text())
+    config["execution"] = {"local_commits": local_commits}
+    config_path.write_text(json.dumps(config))
     def goal(*args):
         result = subprocess.run([sys.executable, str(GOAL), *args, "--workdir", str(repo), "--json"],
                                 capture_output=True, text=True, env=env, timeout=15)
         assert result.returncode == 0, result.stdout + result.stderr
         return json.loads(result.stdout)
     goal("init", "--goal-id", "fixture", "--objective", "offline fixture")
+    goal("workspace", "prepare", "--goal-id", "fixture")
     contract = tmp / "contract.md"
     contract.write_text("Implement a fixture. No external writes.")
     goal("freeze", "--goal-id", "fixture", "--round", "round-1", "--role", "implementer", "--contract", str(contract))
     dispatched = goal("dispatch", "--goal-id", "fixture", "--round", "round-1", "--role", "implementer", "--agent", "agy")
     assert dispatched["job"]["transport_status"] == "completed"
+    assert dispatched["job"]["local_commits"] is local_commits
+    prompt = (repo / ".coordinator/fixture/contracts/round-1.prompt.md").read_text()
+    assert ("Local milestone commits are authorized" in prompt) is local_commits
     goal("status", "--goal-id", "fixture")
     collected = goal("collect", "--goal-id", "fixture", "--round", "round-1", "--role", "implementer")
     assert collected["outcome"] == "collected"

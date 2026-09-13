@@ -17,6 +17,13 @@ The runner forwards `--model ID` and optional `--effort LEVEL`. Forwarded local
 help inspected on 2026-09-13 exposes both flags. Setup recommends a user-confirmed
 DeepSeek Flash v4-or-newer Flash ID; model family/version is a preference, not a
 verified gateway catalog entry. Never silently substitute a model or effort.
+The 2026-09-13 help-page trial reported an SDK worker inheriting an unrecognized
+custom model ID from user settings. Explicit `--model` avoids a CLI default but
+does not prove nested workers resolve it correctly. When authorized, smoke the
+actual worker path, not just `--help`; retain requested versus observed model
+evidence. Do not silently override settings via environment variables or edit
+user configuration as a workaround. A startup-looking error line is not proof
+that the session stopped.
 
 The wrapper forwards non-wrapper arguments to Claude Code. Use `tclaude --help`
 for wrapper commands and `tclaude -- --help` for the forwarded Claude Code

@@ -15,8 +15,9 @@
   expensive coordinator and a cheaper implementer is the part it supports.
 - The recurring failure shapes come from one corpus. Treat the standing withheld
   checks as a starting library to extend from new traces, not a closed set.
-- This protocol does not expose subscription balances, install CLIs, authenticate
-  accounts, create worktrees, or execute providers by itself.
+- The local helper creates and verifies Git worktrees; the execution transport
+  is a separately installed adapter. Neither exposes subscription balances,
+  installs CLIs, authenticates accounts, or grants spending/cleanup authority.
 
 ## Evolving the protocol
 

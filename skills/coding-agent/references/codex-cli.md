@@ -96,6 +96,12 @@ before launching Codex.
 
 ## Not used by this adapter
 
+Local `codex exec --help` rechecked on 2026-09-14 with 0.154.0 exposes native
+`--worktree` alongside `--cd`. Coordinator workspaces are already created and
+registered, so neither runner enables native `--worktree`: execution uses the
+selected cwd/root and a fresh task, avoiding a second managed checkout and
+provider-specific cleanup. Do not infer permission isolation from Git identity.
+
 `codex app-server` exposes a JSON-RPC protocol with a shared runtime,
 `turn/interrupt`, thread listing, and reasoning summaries. It requires a
 long-lived broker process and host session lifecycle hooks, so this adapter

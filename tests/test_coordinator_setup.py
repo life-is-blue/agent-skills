@@ -33,7 +33,9 @@ def test_setup_preview_does_not_write(tmp_path):
     assert result.returncode == 0, result.stderr
     preview = json.loads(result.stdout)
     assert preview["status"] == "confirmation-required"
+    assert preview["execution_recommendations"] == {"local_commits": True}
     assert preview["recommendations"][0]["effort"] == "high"
+    assert preview["reviewer_recommendations"] == [{"agent": "codex", "model": "gpt-5.6-sol", "effort": "medium"}]
     assert not (tmp_path / ".coordinator").exists()
 
 
@@ -42,6 +44,27 @@ def test_missing_config_blocks_before_goal_or_provider(tmp_path):
                  "--round", "r", "--agent", "codex")
     assert result.returncode == 2
     assert "setup required" in result.stderr
+    assert not (tmp_path / ".coordinator").exists()
+
+
+@pytest.mark.parametrize("execution", [{"local_commits": True}, {"local_commits": False}, {}])
+def test_setup_saves_explicit_commit_choice(tmp_path, execution):
+    env = fake_host(tmp_path)
+    config = {**CONFIG, "execution": execution}
+    source = tmp_path / "confirmed.json"
+    source.write_text(json.dumps(config))
+    result = run(tmp_path, "setup", "--from-file", str(source), env=env)
+    assert result.returncode == 0, result.stderr
+    assert json.loads((tmp_path / ".coordinator/config.json").read_text()) == config
+
+
+@pytest.mark.parametrize("execution", [None, [], {"local_commits": "true"},
+                                      {"local_commits": 1}, {"push": True}])
+def test_setup_rejects_invalid_or_broad_commit_permission(tmp_path, execution):
+    source = tmp_path / "invalid.json"
+    source.write_text(json.dumps({**CONFIG, "execution": execution}))
+    result = run(tmp_path, "setup", "--from-file", str(source))
+    assert result.returncode != 0
     assert not (tmp_path / ".coordinator").exists()
 
 
@@ -74,9 +97,22 @@ def test_invalid_config_never_creates_saved_config(tmp_path, change):
     assert not (tmp_path / ".coordinator").exists()
 
 
+@pytest.mark.parametrize("model,allowed", [("gpt-5.6-sol", True), ("gpt-5.6-luna", False)])
+def test_setup_same_provider_requires_different_model(tmp_path, model, allowed):
+    env = fake_host(tmp_path)
+    config = json.loads(json.dumps(CONFIG))
+    config["reviewer"] = [{"agent": "codex", "model": model, "effort": "low"}]
+    source = tmp_path / "confirmed.json"
+    source.write_text(json.dumps(config))
+    result = run(tmp_path, "setup", "--from-file", str(source), env=env)
+    assert (result.returncode == 0) == allowed, result.stderr
+    assert (tmp_path / ".coordinator/config.json").exists() == allowed
+
+
 def test_config_order_and_model_reach_transport(tmp_path):
     env = fake_host(tmp_path)
     config = json.loads(json.dumps(CONFIG))
+    config["execution"] = {"local_commits": True}
     config["implementer"].insert(0, {"agent": "tclaude", "model": "fixture-deepseek", "effort": "high"})
     config["reviewer"] = [{"agent": "codex", "model": "fixture-review", "effort": "high"}]
     runtime = tmp_path / ".coordinator"
@@ -98,6 +134,7 @@ echo '{"status":"completed","agent":"tclaude","session_id":"fixture","worker_exi
                  "--transport-dir", str(transport.parent), env=env)
     assert result.returncode == 0, result.stderr
     job = json.loads(result.stdout)["job"]
+    assert job["local_commits"] is False  # This fixture is a non-Git root.
     assert (job["agent"], job["model"], job["effort"]) == ("tclaude", "fixture-deepseek", "high")
     argv = (tmp_path / "argv.txt").read_text().splitlines()
     assert argv[argv.index("--model") + 1] == "fixture-deepseek"

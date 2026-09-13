@@ -67,10 +67,14 @@ coordinator's attention.
 
 Before provider dispatch, guide setup per
 [the configuration gate](references/runtime-contract.md). `setup` previews the
-recommended fast execution channels; after the user confirms concrete model IDs,
-candidate order and reviewer, `setup --from-file FILE` validates and saves them.
+recommended fast execution channels and Codex Sol (`medium`) review; after the user
+confirms concrete model IDs, candidate order, reviewer and the recommended local
+worktree milestone-commit authorization, `setup --from-file FILE`
+validates and saves them.
 Default dispatch requires a valid `.coordinator/config.json`, including explicit
-agent dispatch. The config is routing preference, not call or spending authority.
+agent dispatch. Config may authorize task-scoped local implementer commits;
+it is not provider-call, spending, push or merge authority. Missing commit
+authorization in an old config stays disabled; see the runtime contract.
 
 Which CLI plays which role is a host fact, not part of the method. On first use
 in an environment, inspect installed CLIs and existing host configuration first,
@@ -113,6 +117,15 @@ Resolve by inspection or collect only when not observable:
 - the required quality floor and machine-verifiable completion signals;
 - whether the user authorized multi-provider execution for this task.
 
+For Git goals, keep control commands in the repository root. After `init`, run
+`workspace prepare --role implementer`; the bundled workspace helper creates
+and registers `.coordinator/worktrees/<goal-id>/implementer/`. After collecting
+implementation, prepare `--role reviewer --round ROUND` to freeze that candidate
+into a separate checkout. `dispatch` selects and verifies registered roots;
+never ask a worker to invent a path or create a second native worktree. Read
+[workspace management](references/runtime-contract.md#managed-workspaces) for
+snapshot, reuse and recovery constraints. Worktrees are not security sandboxes.
+
 Measure before asking. Run the commands, read the code, and record real baseline
 numbers, because a command named in a document may not exist, a lint step may be
 a placeholder that always passes, and a stated capability may not match the
@@ -151,7 +164,9 @@ floor are met, using the user's configured order rather than subscription balanc
   compile, test, and fix loop consumes the most tokens per unit of progress and
   should favor completion latency over token price alone;
 - prefer a reviewer from a different engine family, so a shared blind spot is
-  less likely;
+  less likely; the runner prefers different providers, then permits different
+  models on the same provider (such as Codex Luna → Sol). Never use the same
+  provider/model pair to approve its own work; model diversity is not independence;
 - budget the reviewer as an executor rather than an author. Its brief is short
   because it points at a judge and its expected values, but the review itself
   reruns the suite and builds its own harness, so it costs far more than reading
@@ -251,10 +266,12 @@ explicitly. A typical round:
 
 ```bash
 SKILL_DIR=/path/to/coordinator
-cd /path/to/worktree
+cd /path/to/repository-root
 
 python3 "$SKILL_DIR/scripts/coordinator_goal.py" init --goal-id goal-1 \
   --objective "..." --mode standard --repair-bound 3 --json
+python3 "$SKILL_DIR/scripts/coordinator_goal.py" workspace prepare --goal-id goal-1 \
+  --role implementer --json
 python3 "$SKILL_DIR/scripts/coordinator_goal.py" freeze --goal-id goal-1 \
   --round round-1 --contract /path/to/task-brief.md --json
 python3 "$SKILL_DIR/scripts/coordinator_goal.py" freeze --goal-id goal-1 \
@@ -263,6 +280,8 @@ python3 "$SKILL_DIR/scripts/coordinator_goal.py" dispatch --goal-id goal-1 \
   --round round-1 --role implementer --json
 python3 "$SKILL_DIR/scripts/coordinator_goal.py" collect --goal-id goal-1 \
   --round round-1 --role implementer --json
+python3 "$SKILL_DIR/scripts/coordinator_goal.py" workspace prepare --goal-id goal-1 \
+  --role reviewer --round round-1 --json
 python3 "$SKILL_DIR/scripts/coordinator_goal.py" dispatch --goal-id goal-1 \
   --round round-1 --role reviewer --json
 python3 "$SKILL_DIR/scripts/coordinator_goal.py" collect --goal-id goal-1 \

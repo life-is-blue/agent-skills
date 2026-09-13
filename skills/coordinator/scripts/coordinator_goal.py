@@ -17,9 +17,13 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from workspace import WorkspaceError, capture, create, git, goal_lock, identity, safe_path, verify
 
 SCHEMA_VERSION = 1
 
@@ -98,9 +102,10 @@ def fail(message: str, kind=InputError) -> None:
 
 
 def atomic_write(path: Path, text: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                     prefix=f".{path.name}.", delete=False) as tmp:
+        tmp.write(text)
+    os.replace(tmp.name, path)
 
 
 def load_json(path: Path, what: str) -> dict:
@@ -162,6 +167,7 @@ status 只有 completed|blocked；命令证据放 commands 数组。
 "blockers":[...],"spec_uncertainties":[...],"infrastructure_errors":[...]}
 登记字段（schema_version/role/round_id/start_revision）由 runner 自动补齐，
 你不用写；若写，必须与事实完全一致。verdict 只有 go|no-go。
+环境或沙箱阻止检查时记入 infrastructure_errors，不当作代码缺陷；只使用合同预先授权的替代证据，不放宽门禁或自行绕过权限。
 """,
 }
 
@@ -334,7 +340,127 @@ def cmd_freeze(args: argparse.Namespace) -> dict:
     }
 
 
+def workspace_key(role: str, round_id: str | None) -> str:
+    if role == "reviewer" and (not round_id or "/" in round_id or round_id.startswith(".")):
+        fail("review workspace requires a plain --round path segment")
+    return "implementer" if role == "implementer" else f"reviewer:{round_id}"
+
+
+def require_quiescent(goal: Goal) -> None:
+    for job in goal.data.get("jobs", []):
+        refresh_job(goal, job)
+        if job.get("transport_status") not in {"completed", "failed", "cancelled", "timeout"}:
+            raise GuardError("workspace operation refused while a worker is active or unknown")
+
+
+def cmd_workspace(args: argparse.Namespace) -> dict:
+    control = Path(args.workdir).resolve()
+    goal = Goal(control, args.goal_id)
+    records = goal.data.get("workspaces", {})
+    if args.action == "status":
+        observations = {}
+        for key, record in records.items():
+            try:
+                path = verify(record, control)
+                observations[key] = {**record, "valid": True,
+                    "head": git(path, "rev-parse", "HEAD").decode().strip(),
+                    "changes": os.fsdecode(git(path, "status", "--porcelain"))}
+            except WorkspaceError as exc:
+                observations[key] = {**record, "valid": False, "error": str(exc)}
+        return {"command": "workspace", "action": "status", "workspaces": observations, "errors": []}
+    key = workspace_key(args.role, args.round)
+    require_quiescent(goal)
+    safe_path(control, control / ".coordinator")
+    safe_path(control, goal.dir / "snapshots")
+    repository = identity(control)
+    # worktree registration writes shared Git metadata as well as local files.
+    if not Path(repository["common_dir"]).is_relative_to(control):
+        fail("prepare must run from the control checkout containing shared Git metadata")
+    if key in records:
+        path = verify(records[key], control)
+        if args.base and git(control, "rev-parse", "--verify", args.base + "^{commit}").decode().strip() != records[key]["base_revision"]:
+            fail("registered workspace uses a different base; do not reset it")
+        return {"command": "workspace", "action": "prepare", "status": "reused",
+                "workspace": records[key], "config_path": str(config_path(args)), "errors": []}
+    snapshot = None
+    if args.role == "implementer":
+        base = args.base or goal.data.get("start_revision")
+        if not base or base.startswith("-"):
+            fail("workspace preparation requires a valid starting commit")
+        base = git(control, "rev-parse", "--verify", base + "^{commit}").decode().strip()
+        if base != goal.data.get("start_revision"):
+            fail("workspace base must match the goal's starting revision")
+        path = control / ".coordinator/worktrees" / args.goal_id / "implementer"
+    else:
+        if args.base:
+            fail("review workspace uses the captured candidate, not --base")
+        if goal.round_entry(args.round).get("implementer", {}).get("outcome") != "collected":
+            fail("collect the implementation before preparing its review workspace")
+        source_record = records.get("implementer")
+        if not source_record:
+            fail("prepare a managed implementer workspace first")
+        source = verify(source_record, control)
+        snapshot = capture(source, goal.dir / "snapshots", args.include_untracked)
+        base = snapshot["head"]
+        path = control / ".coordinator/worktrees" / args.goal_id / "reviewer" / args.round
+    safe_path(control, path)
+    ensure_runtime_ignore(control)
+    record = create(control, path, base, snapshot["tree"] if snapshot else None)
+    ensure_runtime_ignore(path)
+    if snapshot:
+        if capture(source, goal.dir / "snapshots", args.include_untracked) != snapshot:
+            fail("candidate changed during freeze; checkout retained for inspection")
+        record["candidate"] = snapshot
+        atomic_write(goal.dir / "snapshots" / f"{args.round}.json", json.dumps(snapshot))
+        (goal.dir / "snapshots" / f"{args.round}.patch").write_bytes(git(source, "diff", "--binary", base, snapshot["tree"]))
+    goal.data.setdefault("workspaces", {})[key] = record
+    goal.save()
+    return {"command": "workspace", "action": "prepare", "status": "created",
+            "workspace": record, "config_path": str(config_path(args)), "errors": []}
+
+
+def dispatch_workspace(goal: Goal, control: Path, role: str, round_id: str, env: dict) -> Path:
+    require_quiescent(goal)
+    redirects = {"GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+                 "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                 "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_NAMESPACE"}
+    if redirects & env.keys():
+        fail("remove inherited/transport Git identity overrides before workspace dispatch")
+    records = goal.data.get("workspaces", {})
+    if records:
+        safe_path(control, goal.dir / "snapshots")
+        record = records.get(workspace_key(role, round_id))
+        if not record:
+            fail("workspace setup required: run workspace prepare for this role/round")
+        path = verify(record, control)
+        if role == "reviewer":
+            frozen = record["candidate"]
+            source = verify(records["implementer"], control)
+            if capture(source, goal.dir / "snapshots", frozen["include_untracked"]) != frozen:
+                fail("implementation changed since candidate freeze")
+            current = capture(path, goal.dir / "snapshots", [])
+            if (current["head"], current["tree"]) != (frozen["head"], frozen["tree"]):
+                fail("review workspace no longer matches the frozen candidate")
+        return path
+    # Compatible external hosts can supply an existing linked worktree. Git
+    # control checkouts are never accepted as execution roots. Non-Git transports
+    # remain protocol-only; they must supply their own workspace boundary.
+    probe = subprocess.run(["git", "-C", str(control), "rev-parse", "--is-inside-work-tree"],
+                           capture_output=True, timeout=10)
+    if probe.returncode == 0:
+        actual = identity(control)
+        if actual["git_dir"] == actual["common_dir"]:
+            fail("workspace setup required: control checkout cannot execute workers; run workspace prepare")
+    return control
+
+
 CONFIG_AGENTS = {"codex", "agy", "claude", "tclaude"}
+
+
+def review_pair_allowed(implementer: dict, reviewer: dict) -> bool:
+    return (implementer["agent"] != reviewer["agent"] or
+            bool(implementer.get("model") and reviewer.get("model")
+                 and implementer["model"] != reviewer["model"]))
 
 
 def config_path(args: argparse.Namespace) -> Path:
@@ -342,12 +468,16 @@ def config_path(args: argparse.Namespace) -> Path:
     return Path(explicit).expanduser().resolve() if explicit else Path(args.workdir).resolve() / ".coordinator/config.json"
 
 
-def validate_config(payload: object) -> dict:
+def validate_config(payload: object, *, check_pair: bool = True) -> dict:
     if (not isinstance(payload, dict) or type(payload.get("schema_version")) is not int
             or payload.get("schema_version") != 1):
         fail("config must be an object with schema_version 1")
-    if payload.keys() - {"schema_version", "implementer", "reviewer"}:
-        fail("config contains unknown fields; do not store credentials or execution permissions here")
+    if payload.keys() - {"schema_version", "implementer", "reviewer", "execution"}:
+        fail("config contains unknown fields; do not store credentials or broad execution permissions here")
+    execution = payload.get("execution", {})
+    if (not isinstance(execution, dict) or execution.keys() - {"local_commits"}
+            or ("local_commits" in execution and type(execution["local_commits"]) is not bool)):
+        fail("execution accepts only optional boolean local_commits")
     for role in ("implementer", "reviewer"):
         candidates = payload.get(role)
         if not isinstance(candidates, list) or not candidates:
@@ -368,8 +498,8 @@ def validate_config(payload: object) -> dict:
                 fail("config effort is invalid")
             if candidate["agent"] == "agy" and (role == "reviewer" or effort not in {"low", "medium", "high"}):
                 fail("agy is implementation-only and requires low/medium/high effort")
-    if not any(i["agent"] != r["agent"] for i in payload["implementer"] for r in payload["reviewer"]):
-        fail("config needs at least one different-provider implementer/reviewer pairing")
+    if check_pair and not any(review_pair_allowed(i, r) for i in payload["implementer"] for r in payload["reviewer"]):
+        fail("config needs at least one distinct provider/model implementer/reviewer pairing")
     return payload
 
 
@@ -407,7 +537,9 @@ def cmd_setup(args: argparse.Namespace) -> dict:
                     {"agent": "codex", "model": "gpt-5.6-luna", "effort": "high"},
                     {"agent": "agy", "model_requirement": "Gemini Flash 3.8 or newer Flash", "effort": "high"},
                     {"agent": "tclaude", "model_requirement": "DeepSeek Flash v4 or newer Flash"}],
-                "required": "Confirm concrete model IDs, ordered implementers and an independent reviewer; then setup --from-file FILE",
+                "reviewer_recommendations": [{"agent": "codex", "model": "gpt-5.6-sol", "effort": "medium"}],
+                "execution_recommendations": {"local_commits": True},
+                "required": "Confirm concrete model IDs, ordered implementers, an independent reviewer and local worktree commit authorization; then setup --from-file FILE",
                 "errors": []}
     try:
         config = validate_config(json.loads(Path(args.from_file).read_text(encoding="utf-8")))
@@ -435,24 +567,46 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
     goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     workdir = Path(args.workdir).resolve()
     env = {**os.environ, **(args.transport_env or {})}
-    candidates = config[args.role]
+    workdir = dispatch_workspace(goal, workdir, args.role, args.round, env)
+    local_commits = False
+    if args.role == "implementer" and config.get("execution", {}).get("local_commits", False):
+        try:
+            workspace_identity = identity(workdir)
+            local_commits = workspace_identity["git_dir"] != workspace_identity["common_dir"]
+        except WorkspaceError:
+            pass  # Non-Git protocol-only roots cannot inherit Git authorization.
+    commit_policy = (
+        "Local milestone commits are authorized in this worktree, subject to host rules and task restrictions: disclose before committing; stage explicit task files only, excluding secrets and runtime output. "
+        "Commit one coherent, reviewable, independently revertible change after relevant checks pass; include its tests/docs and explain its intent. "
+        "Consider checkpoints every 30-60 minutes and before handoff, without forcing incomplete or fragmented commits; report remaining work and blockers. "
+        "No push, merge, history rewrite, other branches/tags or cleanup; commits are not acceptance.\n"
+        if local_commits else
+        "No local commit authorization is inherited for this dispatch. Do not commit unless the user explicitly authorizes it for this task.\n"
+    )
+    candidates = [dict(c) for c in config[args.role]]
     if args.agent != "auto":
         candidates = [c for c in candidates if c["agent"] == args.agent]
-    if args.role == "reviewer":
-        implementer = find_job(goal, args.round, "implementer")
-        candidates = [c for c in candidates if c["agent"] != implementer["agent"]]
+    for candidate in candidates:
+        if args.model is not None:
+            candidate["model"] = args.model
+        if args.effort is not None:
+            candidate["effort"] = args.effort
     candidates = [c for c in candidates if shutil.which(c["agent"], path=env.get("PATH"))]
     if args.role == "implementer":
         reviewers = [c for c in config["reviewer"] if shutil.which(c["agent"], path=env.get("PATH"))]
-        candidates = [c for c in candidates if any(r["agent"] != c["agent"] for r in reviewers)]
+        candidates = [c for c in candidates if any(review_pair_allowed(c, r) for r in reviewers)]
+    else:
+        implementer = find_job(goal, args.round, "implementer")
+        candidates = [c for c in candidates if review_pair_allowed(implementer, c)]
+        # Stable partition: prefer a different provider, preserving configured
+        # order within each group. Model diversity is only the fallback.
+        candidates.sort(key=lambda c: c["agent"] == implementer["agent"])
     if not candidates:
-        fail("no installed configured candidate for this role (review must use a different provider)")
+        fail("no installed configured candidate with a distinct provider/model review pairing")
     selected = dict(candidates[0])
-    if args.model is not None:
-        selected["model"] = args.model
-    if args.effort is not None:
-        selected["effort"] = args.effort
-    validate_config({**config, args.role: [selected]})
+    # Pair eligibility above uses resolved settings and the actual execution
+    # job. Do not recheck review against stale implementation defaults here.
+    validate_config({**config, args.role: [selected]}, check_pair=False)
     probe_candidate(selected, env)
     args.agent = selected["agent"]
     if args.role == "implementer":
@@ -501,8 +655,18 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
     prompt_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = prompt_dir / f"{args.round}{suffix}.prompt.md"
     atomic_write(
-        prompt_file, build_dispatch_prompt(args.role, contract, result_rel)
+        prompt_file, commit_policy + build_dispatch_prompt(args.role, contract, result_rel)
     )
+    if workdir != Path(args.workdir).resolve():
+        public_dir = workdir / ".coordinator" / args.goal_id
+        safe_path(workdir, public_dir)
+        for sub in ("contracts", "deliveries", "reviews"):
+            (public_dir / sub).mkdir(parents=True, exist_ok=True)
+        for name in ("constraints.md", "ledger.json"):
+            atomic_write(public_dir / name, (goal.dir / name).read_text(encoding="utf-8"))
+        if args.role == "implementer":
+            atomic_write(public_dir / "contracts" / contract.name, contract.read_text(encoding="utf-8"))
+        atomic_write(prompt_file, f"Execution root: {workdir}\nControl files are managed by the coordinator; do not enter the control checkout or create another worktree.\n" + prompt_file.read_text())
     command = [
         "bash",
         str(runner),
@@ -527,7 +691,16 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
         "result_artifact": None,
         "model": selected["model"], "effort": selected.get("effort"),
         "config_sha256": hashlib.sha256(json.dumps(config, sort_keys=True).encode("utf-8")).hexdigest(),
+        "workdir": str(workdir), "result_path": str(workdir / result_rel),
+        "local_commits": local_commits,
     }
+    if args.agent != "agy":
+        state_root = (env.get("CODING_AGENT_STATE_DIR") or
+                      (str(Path(env["XDG_STATE_HOME"]) / "coding-agent") if env.get("XDG_STATE_HOME")
+                       else str(Path(env.get("HOME", str(Path.home()))) / ".local/state/coding-agent")))
+        job["transport_runner"] = str(runner.resolve())
+        job["transport_state_dir"] = str(Path(state_root).expanduser().resolve())
+        command += ["--state-dir", job["transport_state_dir"]]
     if args.agent == "agy":
         state_dir = private_dir(args.goal_id) / "transport"
         if (workdir / result_rel).exists():
@@ -547,8 +720,10 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
             },
             "required": ["status", "candidate_revision", "changed_files", "commands", "unresolved", "summary"],
         }))
-        atomic_write(prompt_file, contract.read_text(encoding="utf-8") +
+        atomic_write(prompt_file, commit_policy + contract.read_text(encoding="utf-8") +
                      "\nReturn the delivery as structured_output matching the supplied schema. Do not write the delivery file.\n")
+        if workdir != Path(args.workdir).resolve():
+            atomic_write(prompt_file, f"Execution root: {workdir}\nDo not enter the control checkout or create another worktree.\n" + prompt_file.read_text())
         command = [sys.executable, str(adapter), "start", "--agent", "agy", "--write",
                    "--workdir", str(workdir), "--prompt-file", str(prompt_file),
                    "--output-schema", str(schema_file), "--state-dir", str(state_dir),
@@ -580,11 +755,13 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
 
     if not isinstance(envelope, dict):
         fail("transport envelope must be an object; attempt remains unknown")
+    if envelope.get("agent", args.agent) != args.agent or envelope.get("workdir", str(workdir)) != str(workdir):
+        fail("transport provider/workdir mismatch; attempt remains unknown")
     if args.agent == "agy":
         if envelope.get("job_id") != job["session_id"] or envelope.get("workdir") != str(workdir):
             fail("native transport identity/workdir mismatch; attempt remains unknown")
         if envelope.get("status") == "completed" and isinstance(envelope.get("structured_output"), dict):
-            atomic_write(workdir / result_rel, json.dumps(envelope["structured_output"]))
+            atomic_write(goal.dir / "deliveries" / f"{args.round}.json", json.dumps(envelope["structured_output"]))
         envelope["session_id"] = envelope.get("job_id")
         envelope["worker_exit_code"] = envelope.get("exit_code")
         job["activity"] = envelope.get("activity")
@@ -671,17 +848,27 @@ def mechanical_go(payload: dict) -> bool:
 def cmd_collect(args: argparse.Namespace) -> dict:
     goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     job = find_job(goal, args.round, args.role)
-    native = refresh_native_job(goal, job)
+    native = refresh_job(goal, job)
     if job.get("transport_status") not in {"completed", "failed", "cancelled", "timeout"}:
         fail("cannot collect an active or unknown attempt; establish terminal transport state first")
-    if native and job.get("transport_status") != "completed":
-        fail("native execution did not complete successfully; treat this attempt as infrastructure failure")
+    if job.get("transport_status") != "completed":
+        fail("execution did not complete successfully; treat this attempt as infrastructure failure")
     rel = (
         f"deliveries/{args.round}.json"
         if args.role == "implementer"
         else f"reviews/{args.round}.json"
     )
     artifact = goal.dir / rel
+    source = Path(job.get("result_path", str(artifact)))
+    if not native and source != artifact and source.exists():
+        worker_root = Path(job["workdir"])
+        if (source.is_symlink() or not source.resolve().is_relative_to(worker_root)
+                or not source.is_file() or source.stat().st_size > 1048576):
+            fail("worker result artifact is unsafe or too large")
+        if artifact.exists() and artifact.read_bytes() != source.read_bytes():
+            fail("collected artifact differs from this worker's result")
+        if not artifact.exists():
+            atomic_write(artifact, source.read_text(encoding="utf-8"))
     if native and job.get("transport_status") == "completed" and isinstance(native.get("structured_output"), dict):
         if not artifact.exists():
             atomic_write(artifact, json.dumps(native["structured_output"]))
@@ -742,6 +929,9 @@ def cmd_collect(args: argparse.Namespace) -> dict:
             else:
                 outcome["verdict"] = payload["verdict"]
                 outcome["mechanical_go"] = mechanical_go(payload)
+                if payload["infrastructure_errors"]:
+                    outcome["outcome"] = "infrastructure-failure"
+                    outcome["detail"] = "review checks were obstructed by infrastructure; candidate remains undecided"
     entry[args.role] = {**outcome, "job": job, "collected_at": now_iso()}
     goal.save()
     return {
@@ -814,7 +1004,7 @@ def cmd_retry(args: argparse.Namespace) -> dict:
         f"retry a {args.role} dispatch",
     )
     job = find_job(goal, args.round, args.role)
-    refresh_native_job(goal, job)
+    require_quiescent(goal)
     if job.get("transport_status") not in {"completed", "failed", "cancelled", "timeout"}:
         fail("cannot retry an active or unknown attempt; verify the old worker stopped first")
     # The transport refuses a result path that already exists (anti-stale).
@@ -827,6 +1017,11 @@ def cmd_retry(args: argparse.Namespace) -> dict:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         aside = goal.dir / f"{args.round}-{args.role}-set-aside-{stamp}.json"
         artifact.rename(aside)
+    worker_artifact = Path(job.get("result_path", str(artifact)))
+    if worker_artifact != artifact and worker_artifact.is_file():
+        if worker_artifact.is_symlink() or not worker_artifact.resolve().is_relative_to(Path(job["workdir"])):
+            fail("unsafe worker result path; inspect before retry")
+        worker_artifact.rename(worker_artifact.with_name(f"{args.round}-set-aside-{uuid.uuid4().hex}.json"))
     entry = goal.round_entry(args.round)
     entry.setdefault("infra_retries", []).append(
         {
@@ -853,8 +1048,10 @@ def cmd_retry(args: argparse.Namespace) -> dict:
 def ensure_runtime_ignore(workdir: Path) -> None:
     """Keep runtime output untracked without editing the repository ignore file."""
     runtime_dir = workdir / ".coordinator"
+    safe_path(workdir, runtime_dir)
     runtime_dir.mkdir(exist_ok=True)
     ignore_file = runtime_dir / ".gitignore"
+    safe_path(workdir, ignore_file)
     existing = ignore_file.read_text(encoding="utf-8") if ignore_file.exists() else ""
     if existing.splitlines()[-1:] == ["*"]:
         return
@@ -875,7 +1072,7 @@ def cmd_archive(args: argparse.Namespace) -> dict:
         if source.is_file():
             (sink / name).write_bytes(source.read_bytes())
             files.append(name)
-    for sub in ("contracts", "deliveries", "reviews"):
+    for sub in ("contracts", "deliveries", "reviews", "snapshots"):
         for source in sorted((goal.dir / sub).glob("*")):
             if source.is_file():
                 target_dir = sink / sub
@@ -927,7 +1124,7 @@ def refresh_native_job(goal: Goal, job: dict) -> dict | None:
         native = json.loads(proc.stdout)
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
         return None
-    if not isinstance(native, dict) or native.get("job_id") != job["session_id"] or native.get("workdir") != str(goal.dir.parent.parent):
+    if not isinstance(native, dict) or native.get("job_id") != job["session_id"] or native.get("workdir") != job.get("workdir", str(goal.dir.parent.parent)):
         return None
     job["transport_status"] = native.get("status")
     job["activity"] = native.get("activity")
@@ -936,10 +1133,38 @@ def refresh_native_job(goal: Goal, job: dict) -> dict | None:
     return native
 
 
+def refresh_job(goal: Goal, job: dict) -> dict | None:
+    """Read runner facts, never infer liveness from provider prose."""
+    if job.get("agent") == "agy":
+        return refresh_native_job(goal, job)
+    runner = job.get("transport_runner")
+    if not runner:
+        return None  # Legacy terminal receipts remain usable; unknown stays blocked.
+    job["transport_status"] = "unknown"
+    if not job.get("session_id") or not job.get("transport_state_dir"):
+        return None
+    try:
+        proc = subprocess.run(["bash", runner, "status", job["session_id"],
+                               "--state-dir", job["transport_state_dir"], "--json"],
+                              capture_output=True, text=True, timeout=10)
+        receipt = json.loads(proc.stdout)
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return None
+    if (proc.returncode or not isinstance(receipt, dict) or receipt.get("session_id") != job["session_id"]
+            or receipt.get("agent") != job["agent"] or receipt.get("workdir") != job.get("workdir")):
+        return None
+    if receipt.get("status") in {"completed", "failed", "cancelled", "timeout"} and (
+            type(receipt.get("worker_exit_code")) is not int or receipt.get("wait_timed_out")):
+        return None
+    job.update(transport_status=receipt.get("status"), worker_exit_code=receipt.get("worker_exit_code"),
+               activity=receipt.get("activity"))
+    return None  # Only native agy receipts carry structured_output.
+
+
 def cmd_status(args: argparse.Namespace) -> dict:
     goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     for job in goal.data.get("jobs", []):
-        refresh_native_job(goal, job)
+        refresh_job(goal, job)
     return {
         "command": "status",
         "goal_id": args.goal_id,
@@ -985,6 +1210,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config")
     p.add_argument("--from-file", help="user-confirmed configuration JSON")
     p.set_defaults(func=cmd_setup)
+
+    p = sub.add_parser("workspace")
+    p.add_argument("action", choices=["prepare", "status"])
+    common(p)
+    p.add_argument("--role", choices=["implementer", "reviewer"], default="implementer")
+    p.add_argument("--round")
+    p.add_argument("--base")
+    p.add_argument("--config")
+    p.add_argument("--include-untracked", action="append", default=[])
+    p.set_defaults(func=cmd_workspace)
 
     p = sub.add_parser("freeze")
     common(p)
@@ -1053,8 +1288,16 @@ def main(argv: list[str] | None = None) -> int:
             merged.update(item)
         args.transport_env = merged
     try:
-        payload = args.func(args)
-    except InputError as error:
+        directory = Path(args.workdir).resolve() / ".coordinator" / getattr(args, "goal_id", "")
+        mutating = args.command not in {"status", "setup", "init"} and not (
+            args.command == "workspace" and args.action == "status")
+        if mutating and directory.is_dir():
+            safe_path(Path(args.workdir).resolve(), directory)
+            with goal_lock(directory):
+                payload = args.func(args)
+        else:
+            payload = args.func(args)
+    except (InputError, WorkspaceError) as error:
         print(f"error: {error}", file=sys.stderr)
         return EXIT_INPUT
     except GuardError as error:

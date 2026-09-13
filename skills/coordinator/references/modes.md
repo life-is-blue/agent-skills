@@ -22,8 +22,9 @@ non-trivial behavior.
 
 - A coordinator freezes scope and acceptance evidence.
 - One provider implements in an isolated branch or worktree.
-- A different provider reviews the diff and runs any applicable withheld
-  checks.
+- A separate reviewer reviews the diff and runs any applicable withheld checks.
+  Prefer a different provider; a different model on the same provider is an
+  eligible fallback, never the same provider/model pair.
 - The controller reruns the repository gate before integration.
 - A failed review produces a narrow fix contract, not a reissued task.
 

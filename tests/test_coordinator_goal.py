@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "skills" / "coordinator" / "scripts" / "coordinator_goal.py"
@@ -12,6 +13,10 @@ RUNNER = ROOT / "skills" / "coordinator" / "scripts" / "coordinator_goal.py"
 FAKE_TRANSPORT = r"""#!/usr/bin/env bash
 set -u
 cmd="$1"; shift
+if [ "$cmd" = status ]; then
+  cat "$0.$1.json"
+  exit
+fi
 [ "$cmd" = "run" ] || exit 64
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -27,7 +32,9 @@ if [ -n "${FAKE_ARTIFACT_FILE:-}" ]; then
   mkdir -p "$W/$(dirname "$R")"
   cat "$FAKE_ARTIFACT_FILE" > "$W/$R"
 fi
-printf '{"schema_version":1,"session_id":"fake-1","status":"completed","agent":"%s","worker_exit_code":0,"result_artifact":{"status":"present","path":"%s/%s"},"errors":[]}\n' "$A" "$W" "$R"
+S="fake-$$"
+printf '{"schema_version":1,"session_id":"%s","workdir":"%s","status":"completed","agent":"%s","worker_exit_code":0,"result_artifact":{"status":"present","path":"%s/%s"},"errors":[]}\n' "$S" "$W" "$A" "$W" "$R" > "$0.$S.json"
+cat "$0.$S.json"
 """
 
 IMPL_OK = {
@@ -78,6 +85,39 @@ def make_transport(tmp_path: Path) -> Path:
     script.write_text(FAKE_TRANSPORT, encoding="utf-8")
     script.chmod(0o755)
     return transport
+
+
+@pytest.mark.parametrize("observed", ["running", "stopping", "lost", "wrong-root", "missing",
+                                      "missing-exit", "wait-timeout"])
+def test_retry_uses_live_runner_state_not_cached_failure(tmp_path, observed):
+    init_run(tmp_path)
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    dispatched = payload(run_goal("dispatch", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "implementer", "--transport-dir", transport,
+        artifact=IMPL_OK))
+    job = dispatched["job"]
+    receipt_file = Path(job["transport_runner"] + "." + job["session_id"] + ".json")
+    receipt = json.loads(receipt_file.read_text())
+    if observed == "wrong-root":
+        receipt["workdir"] = str(tmp_path.parent)
+    elif observed == "missing-exit":
+        receipt["worker_exit_code"] = None
+    elif observed == "wait-timeout":
+        receipt["wait_timed_out"] = True
+    else:
+        receipt["status"] = observed
+    receipt_file.write_text("not-json" if observed == "missing" else json.dumps(receipt))
+    goal_file = tmp_path / ".coordinator/r1/goal.json"
+    state = json.loads(goal_file.read_text())
+    state["jobs"][0]["transport_status"] = "failed"
+    goal_file.write_text(json.dumps(state))
+    result = run_goal("retry", "--workdir", tmp_path, "--goal-id", "r1", "--round", "round-1",
+        "--role", "implementer", "--note", "log looked broken", check=False)
+    assert result.returncode != 0
+    assert "active or unknown" in result.stderr
+    assert (tmp_path / ".coordinator/r1/deliveries/round-1.json").exists()
+    assert json.loads(goal_file.read_text())["state"] == "implementing"
 
 
 def run_goal(*args: object, artifact: dict | None = None,
@@ -157,6 +197,81 @@ def dispatch_and_collect(tmp_path: Path, transport: Path, role: str,
         "--round", "round-1", "--role", role,
     )
     return payload(collected)
+
+
+def test_review_environment_failure_is_not_candidate_rejection(tmp_path):
+    init_run(tmp_path)
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
+    freeze_round(tmp_path, transport, role="reviewer")
+    review = {**REVIEW_NO_GO, "infrastructure_errors": ["loopback bind EPERM"]}
+    result = dispatch_and_collect(tmp_path, transport, "reviewer", review)
+    assert result["outcome"] == "infrastructure-failure"
+    assert result["mechanical_go"] is False
+    retry = payload(run_goal("retry", "--workdir", tmp_path, "--goal-id", "r1",
+        "--round", "round-1", "--role", "reviewer", "--note", "declare authorized loopback evidence path"))
+    assert retry["repairs_used"] == 0
+
+
+@pytest.mark.parametrize("other_provider,override,actual_model,expected", [
+    (False, None, "fixture", "codex"),
+    (True, None, "fixture", "claude"),
+    (False, "fixture", "fixture", None),
+    (False, "fixture", "alternate-executor", "codex"),
+    (False, None, None, None),
+])
+def test_review_pair_selection_uses_actual_model(tmp_path, other_provider, override, actual_model, expected):
+    init_run(tmp_path)
+    config_path = tmp_path / ".coordinator/config.json"
+    config = json.loads(config_path.read_text())
+    config["reviewer"] = [{"agent": "codex", "model": "gpt-5.6-sol", "effort": "high"}]
+    if other_provider:
+        config["reviewer"].append({"agent": "claude", "model": "fixture-review"})
+    config_path.write_text(json.dumps(config))
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    freeze_round(tmp_path, transport, role="reviewer", name="review.md")
+    dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
+    # Also exercise historical jobs and execution settings differing from config.
+    goal_path = tmp_path / ".coordinator/r1/goal.json"
+    state = json.loads(goal_path.read_text())
+    if actual_model is None:
+        state["jobs"][-1].pop("model")
+    else:
+        state["jobs"][-1]["model"] = actual_model
+    goal_path.write_text(json.dumps(state))
+    extra = ["--model", override] if override else []
+    result = run_goal("dispatch", "--workdir", tmp_path, "--goal-id", "r1",
+                      "--round", "round-1", "--role", "reviewer",
+                      "--transport-dir", transport, *extra, artifact=REVIEW_GO, check=False)
+    if expected is None:
+        assert result.returncode != 0
+        assert "distinct provider/model" in result.stderr
+        state = json.loads((tmp_path / ".coordinator/r1/goal.json").read_text())
+        assert len(state["jobs"]) == 1
+    else:
+        assert result.returncode == 0, result.stderr
+        job = payload(result)["job"]
+        assert job["agent"] == expected
+        if expected == "codex":
+            assert (job["model"], job["effort"]) == (override or "gpt-5.6-sol", "high")
+
+
+def test_implementation_override_cannot_remove_review_option(tmp_path):
+    init_run(tmp_path)
+    config_path = tmp_path / ".coordinator/config.json"
+    config = json.loads(config_path.read_text())
+    config["reviewer"] = [{"agent": "codex", "model": "gpt-5.6-sol"}]
+    config_path.write_text(json.dumps(config))
+    transport = make_transport(tmp_path)
+    freeze_round(tmp_path, transport)
+    result = run_goal("dispatch", "--workdir", tmp_path, "--goal-id", "r1",
+                      "--round", "round-1", "--role", "implementer",
+                      "--model", "gpt-5.6-sol", "--transport-dir", transport, check=False)
+    assert result.returncode != 0
+    assert "distinct provider/model" in result.stderr
+    assert not json.loads((tmp_path / ".coordinator/r1/goal.json").read_text()).get("jobs")
 
 
 def test_init_creates_run_directory(tmp_path: Path):

@@ -14,6 +14,23 @@ implementer's prose or silently fix the work.
   steps rather than a restated specification, and the reviewer spends its
   capacity rerunning and reproducing.
 
+## Match the environment to the gates
+
+Before freezing review, check whether the intended execution sandbox supports
+the gate's actual actions: loopback listeners, browsers, subprocesses, files and
+required services. Local help is not proof that these actions work. Use a small
+probe under that same boundary when authorized, not an automatic permission bypass.
+
+If a required check cannot run there, declare in the contract its exact authorized
+substitute, execution boundary and required evidence, or pause that check for
+authorization. A coordinator rerun must use the frozen candidate and the same
+gate; do not weaken the gate or treat an unrelated unit test as its replacement.
+Keep withheld evidence private. Neither a sandbox failure nor skipped testing
+proves a code defect or acceptance. Report it in `infrastructure_errors`; collect
+classifies such a review as infrastructure failure, leaving the candidate
+undecided rather than consuming a code-repair round. Verified code defects may
+still be reported separately; resolve the environment before final acceptance.
+
 ## Withheld checks
 
 A worker can optimize for checks it sees. When a task has a plausible silent

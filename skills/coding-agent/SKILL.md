@@ -12,7 +12,8 @@ This Skill bundles two adapters:
   and keeps provider output as a plain log. Its sessions, commands, and
   transport envelope are documented in the sections marked *(plain-log
   runner)*.
-- `scripts/codex_run.py` — the structured runner (legacy filename retained).
+- `scripts/structured_run.py` (legacy alias `scripts/codex_run.py`) — the structured
+  runner backed by modular agent adapters (`adapters/codex.py`, `adapters/agy.py`).
   Supports Codex, TCodex and explicit `start --agent agy --write`; returns a
   machine-readable result envelope instead of a log. See the section marked
   *(structured mode)*.
@@ -218,13 +219,13 @@ and `--result-file` additionally require Python 3 from the host.
 6. Never force-push or rewrite an existing/shared branch without explicit
    authorization.
 
-## Codex structured mode (codex_run.py)
+## Structured mode (structured_run.py / codex_run.py)
 
-`scripts/codex_run.py` executes Codex or the CLI-compatible TCodex distribution
-as a monitored job with a stable JSON envelope (job id, thread id, touched
-files, executed commands, token usage), thread resume, and an always-read-only
-built-in reviewer. Use it when a calling agent must act on the result
-programmatically.
+`scripts/structured_run.py` (and backwards-compatible alias `scripts/codex_run.py`)
+executes supported CLIs (Codex, TCodex, agy) as monitored jobs with a stable
+JSON envelope (job id, thread id, touched files, executed commands, token
+usage), thread resume, and an always-read-only built-in reviewer. Use it when a
+calling agent must act on the result programmatically.
 
 ```bash
 SKILL_DIR=/path/to/coding-agent

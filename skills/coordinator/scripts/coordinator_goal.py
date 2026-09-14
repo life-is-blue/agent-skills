@@ -653,7 +653,9 @@ def cmd_dispatch(args: argparse.Namespace) -> dict:
     if args.agent == "agy" and args.role != "implementer":
         fail("agy adapter does not enforce read-only review; choose an authorized read-only reviewer")
     if args.agent == "agy":
-        adapter = runner.parent / "codex_run.py"
+        adapter = runner.parent / "structured_run.py"
+        if not adapter.is_file():
+            adapter = runner.parent / "codex_run.py"
         if not adapter.is_file():
             fail("installed coding-agent transport lacks the agy structured adapter")
     # Materialize reviewer prompts beside the private contract so neither the

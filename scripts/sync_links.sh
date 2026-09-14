@@ -35,6 +35,7 @@ TARGETS=(
   "${HOME}/.codebuddy/skills"
   "${HOME}/.claude/skills"
   "${HOME}/.tclaude/skills"
+  "${HOME}/.gemini/antigravity-cli/skills"
 )
 
 # Scoped links, as "name=source". In-repo skills live under skills/; the rest are

@@ -25,6 +25,7 @@ CLIENT_DIRS = [
     ".codebuddy/skills",
     ".claude/skills",
     ".tclaude/skills",
+    ".gemini/antigravity-cli/skills",
 ]
 
 # In-repo scoped skills: source always exists once this repo is checked out.

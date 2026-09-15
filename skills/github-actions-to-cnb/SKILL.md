@@ -1,6 +1,6 @@
 ---
 name: github-actions-to-cnb
-description: "将仓库的 GitHub Actions workflow（.github/workflows/*.yml）迁移为 CNB（Cloud Native Build，cnb.cool）流水线（.cnb.yml / .cnb/web_trigger.yml）。给出六阶段迁移流程（Inventory/Classify/Map/Secrets/Dry-run/Dual-track cutover）、GitHub Actions 到 CNB 的原语映射表（schedule/workflow_dispatch/push.paths/concurrency/matrix/cache/artifact/secrets/token）、runner 系统依赖基线，以及证据化排障命令。触发词：GitHub Actions 迁移 CNB、迁移到 CNB、.cnb.yml、web_trigger、CNB 流水线、GHA to CNB、cnb.cool migration。"
+description: "将仓库的 GitHub Actions workflow（.github/workflows/*.yml）迁移为 CNB（Cloud Native Build，cnb.cool）流水线（.cnb.yml / .cnb/web_trigger.yml）。给出六阶段迁移流程（Inventory/Classify/Map/Secrets/Dry-run/Dual-track cutover）、GitHub Actions 到 CNB 的原语映射表（schedule/workflow_dispatch/push.paths/concurrency/matrix/cache/artifact/secrets/token）、runner 系统依赖基线，以及证据化排障命令。触发词：GitHub Actions 迁移 CNB、迁移到 CNB、.cnb.yml、web_trigger、CNB 流水线、GHA to CNB、cnb.cool migration。即使用户没有直接说出"CNB"或".cnb.yml"，只要是在讨论把仓库的 CI/CD 从 GitHub Actions 换成云原生构建平台、写 CNB 流水线配置、或排查 CNB 构建失败/触发器问题，也应主动使用这个技能，而不是凭经验直接手写配置。"
 ---
 
 # GitHub Actions → CNB 迁移
@@ -81,9 +81,13 @@ Runner 依赖基线（几乎每个迁移都需要；缺一项通常在 `install`
 
 按实际脚本裁剪包列表；`rsync` 最容易被漏掉（往往要等 deploy 阶段用 worktree 同步时才报错）。
 
+单个 job 默认超时 2 小时（另外无输出 10 分钟也会被判定超时），上限可显式声明到 12 小时。GitHub Actions 里跑很久没设超时的 job（LLM 批处理、大型构建）迁过来不要假设默认够用——这是真实踩过的坑：先做检查点/优雅退出，或显式声明 `timeout:`，不要等它被静默杀掉才发现。
+
+完整可执行的骨架示例见 [references/example.cnb.yml](references/example.cnb.yml)（含锚点复用、`lock`、`imports`、`crontab`、`web_trigger`、`tag_push` 的组合写法）；每个字段的权威语法定义见 [references/cnb-docs.md](references/cnb-docs.md)。
+
 ### 4. Secrets（密钥映射）
 
-1. 不把密钥写进 `.cnb.yml` 或提交历史。用 `imports` 指向受控的私有密钥仓库文件。
+1. 不把密钥写进 `.cnb.yml` 或提交历史。用 `imports` 指向受控的私有密钥仓库文件（机制见 [references/cnb-docs.md](references/cnb-docs.md) 的 Secret store 条目）。
 2. 建一张映射表：GitHub 密钥名 → CNB 密钥仓键名 → 注入后环境变量名 → 使用位置。逐条核对，不留遗漏。
 3. 含密钥的 `imports` 只放受控仓库；业务仓库通过 `include` 引用，不直接内联敏感内容。
 
@@ -91,7 +95,7 @@ Runner 依赖基线（几乎每个迁移都需要；缺一项通常在 `install`
 
 1. 先用页面按钮触发（`web_trigger`），`DRY_RUN=1`：只验证 install/build/test 链路，跳过 deploy/release。
 2. 连续拿到 3 次成功的 build SN 再进入下一阶段——一次绿不算数。
-3. 不可信事件（PR / 评论触发）不得跑到带写权限的 stage。
+3. 不可信事件（PR / 评论触发）不得跑到带写权限的 stage：这类事件下 `CNB_TOKEN` 权限本身就被平台限制，但流水线配置来自可被外部修改的源分支，敏感操作仍要靠 stage 划分主动隔离（细节见 [references/cnb-docs.md](references/cnb-docs.md) 的 Trigger rules 条目）。
 
 ### 6. Dual-track → Cutover（双轨切流）
 
@@ -104,7 +108,7 @@ Runner 依赖基线（几乎每个迁移都需要；缺一项通常在 `install`
 
 1. 触发是否生效（按钮 / 定时 / push）。
 2. 写入是否生效（目标分支是否有新提交）。
-3. 发布是否生效（Release 是否有资产；`target_commitish` 等必填字段是否补全）。
+3. 发布是否生效（Release 是否有资产）。内置 `type: git:release` 任务够用就优先用它（字段：`tag`/`title`/`description`/`preRelease`/`latest`，示例见 [references/example.cnb.yml](references/example.cnb.yml)）；只有自己写脚本直调 CNB OpenAPI 创建 release 时才需要关心 `target_commitish` 这类 API 请求字段，别和 `.cnb.yml` 里的任务字段混为一谈——这是真实踩过的混淆。
 4. 运行时是否可读（下游消费方能否按新链路拉到产物）。
 
 查证据用 CNB OpenAPI，不要只看页面颜色：
@@ -134,5 +138,5 @@ curl -sS -H "Authorization: Bearer $CNB_TOKEN" -H "Accept: application/vnd.cnb.a
 ## 何时不适用
 
 - 目标平台不是 CNB（不同 CI 有各自的原语，映射表不通用）。
-- 只是想了解 CNB 本身——直接查 CNB 官方文档，不需要这份迁移协议。
+- 只是想了解 CNB 本身——直接查 [references/cnb-docs.md](references/cnb-docs.md) 里链接的官方文档，不需要这份迁移协议。
 - Workflow 里没有触发器 / 密钥 / 发布链路（纯静态文件）——直接手写 `.cnb.yml` 即可，不必走六阶段流程。

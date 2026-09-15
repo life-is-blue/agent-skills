@@ -81,9 +81,13 @@ Runner 依赖基线（几乎每个迁移都需要；缺一项通常在 `install`
 
 按实际脚本裁剪包列表；`rsync` 最容易被漏掉（往往要等 deploy 阶段用 worktree 同步时才报错）。
 
+单个 job 默认超时 2 小时（另外无输出 10 分钟也会被判定超时），上限可显式声明到 12 小时。GitHub Actions 里跑很久没设超时的 job（LLM 批处理、大型构建）迁过来不要假设默认够用——这是真实踩过的坑：先做检查点/优雅退出，或显式声明 `timeout:`，不要等它被静默杀掉才发现。
+
+完整可执行的骨架示例见 [references/example.cnb.yml](references/example.cnb.yml)（含锚点复用、`lock`、`imports`、`crontab`、`web_trigger`、`tag_push` 的组合写法）；每个字段的权威语法定义见 [references/cnb-docs.md](references/cnb-docs.md)。
+
 ### 4. Secrets（密钥映射）
 
-1. 不把密钥写进 `.cnb.yml` 或提交历史。用 `imports` 指向受控的私有密钥仓库文件。
+1. 不把密钥写进 `.cnb.yml` 或提交历史。用 `imports` 指向受控的私有密钥仓库文件（机制见 [references/cnb-docs.md](references/cnb-docs.md) 的 Secret store 条目）。
 2. 建一张映射表：GitHub 密钥名 → CNB 密钥仓键名 → 注入后环境变量名 → 使用位置。逐条核对，不留遗漏。
 3. 含密钥的 `imports` 只放受控仓库；业务仓库通过 `include` 引用，不直接内联敏感内容。
 
@@ -91,7 +95,7 @@ Runner 依赖基线（几乎每个迁移都需要；缺一项通常在 `install`
 
 1. 先用页面按钮触发（`web_trigger`），`DRY_RUN=1`：只验证 install/build/test 链路，跳过 deploy/release。
 2. 连续拿到 3 次成功的 build SN 再进入下一阶段——一次绿不算数。
-3. 不可信事件（PR / 评论触发）不得跑到带写权限的 stage。
+3. 不可信事件（PR / 评论触发）不得跑到带写权限的 stage：这类事件下 `CNB_TOKEN` 权限本身就被平台限制，但流水线配置来自可被外部修改的源分支，敏感操作仍要靠 stage 划分主动隔离（细节见 [references/cnb-docs.md](references/cnb-docs.md) 的 Trigger rules 条目）。
 
 ### 6. Dual-track → Cutover（双轨切流）
 
@@ -134,5 +138,5 @@ curl -sS -H "Authorization: Bearer $CNB_TOKEN" -H "Accept: application/vnd.cnb.a
 ## 何时不适用
 
 - 目标平台不是 CNB（不同 CI 有各自的原语，映射表不通用）。
-- 只是想了解 CNB 本身——直接查 CNB 官方文档，不需要这份迁移协议。
+- 只是想了解 CNB 本身——直接查 [references/cnb-docs.md](references/cnb-docs.md) 里链接的官方文档，不需要这份迁移协议。
 - Workflow 里没有触发器 / 密钥 / 发布链路（纯静态文件）——直接手写 `.cnb.yml` 即可，不必走六阶段流程。

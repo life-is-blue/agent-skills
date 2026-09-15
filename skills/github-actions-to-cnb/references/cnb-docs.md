@@ -13,6 +13,7 @@ links verified live and consistent with this Skill's mapping table.
 | [Crontab](https://docs.cnb.cool/zh/build/crontab.html) | Confirms the 5-minute minimum scheduling interval and the exact `"crontab: <expr>"` key syntax. |
 | [Secret store](https://docs.cnb.cool/zh/repo/secret.html) | How a secrets repo file referenced via `imports` gets parsed and injected as env vars — the mechanics behind this Skill's Secrets step. |
 | [Timeout strategy](https://docs.cnb.cool/zh/build/timeout.html) | Pipeline ceiling (20h) and the per-job default (2h, plus a 10-minute no-output kill) — read before migrating any long-running step (LLM batch jobs, large builds). |
+| [Internal steps](https://docs.cnb.cool/zh/build/internal-steps.html) | `type: git:release` (fields: `tag`/`title`/`description`/`descriptionFromFile`/`preRelease`/`latest`/`overlying` — no `target_commitish`) and `cnbcool/attachments:latest` (uploads via `settings.attachments`, a list of paths/globs) — the two internal tasks behind this Skill's `actions/upload-artifact` and GitHub Release mapping. Worked example in [references/example.cnb.yml](example.cnb.yml). |
 
 ## A real footgun this caught
 

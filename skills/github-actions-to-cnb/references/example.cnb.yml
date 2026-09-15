@@ -92,6 +92,28 @@ main:
     - <<: *build-publish
 
 # Tag-triggered jobs live under the catch-all branch key ($), not `main`.
+# --- 3. Release on tag: only add this if you're actually migrating the
+# release/publish workflow (Classify usually defers this to a later phase).
+# Two different things, don't conflate them:
+#   - `type: git:release` is a .cnb.yml pipeline task. Its fields are `tag`,
+#     `title`, `description`/`descriptionFromFile`, `preRelease`, `latest`,
+#     `overlying` — there is no `target_commitish` here.
+#   - If you instead call CNB's OpenAPI directly from a custom script (e.g.
+#     porting a `gh release create` call), THAT request body needs its own
+#     `target_commitish` field — a real production bug in this org came from
+#     omitting it there, not from the git:release task above.
 $:
   tag_push:
     - <<: *build-publish
+    - name: release
+      stages:
+        - name: upload-attachments
+          image: cnbcool/attachments:latest
+          settings:
+            attachments:
+              - dist/**
+        - name: create-release
+          type: git:release
+          options:
+            title: <RELEASE_TITLE>
+            descriptionFromFile: CHANGELOG.md

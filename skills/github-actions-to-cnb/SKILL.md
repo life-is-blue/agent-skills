@@ -1,6 +1,6 @@
 ---
 name: github-actions-to-cnb
-description: "将仓库的 GitHub Actions workflow（.github/workflows/*.yml）迁移为 CNB（Cloud Native Build，cnb.cool）流水线（.cnb.yml / .cnb/web_trigger.yml）。给出六阶段迁移流程（Inventory/Classify/Map/Secrets/Dry-run/Dual-track cutover）、GitHub Actions 到 CNB 的原语映射表（schedule/workflow_dispatch/push.paths/concurrency/matrix/cache/artifact/secrets/token）、runner 系统依赖基线，以及证据化排障命令。触发词：GitHub Actions 迁移 CNB、迁移到 CNB、.cnb.yml、web_trigger、CNB 流水线、GHA to CNB、cnb.cool migration。"
+description: "将仓库的 GitHub Actions workflow（.github/workflows/*.yml）迁移为 CNB（Cloud Native Build，cnb.cool）流水线（.cnb.yml / .cnb/web_trigger.yml）。给出六阶段迁移流程（Inventory/Classify/Map/Secrets/Dry-run/Dual-track cutover）、GitHub Actions 到 CNB 的原语映射表（schedule/workflow_dispatch/push.paths/concurrency/matrix/cache/artifact/secrets/token）、runner 系统依赖基线，以及证据化排障命令。触发词：GitHub Actions 迁移 CNB、迁移到 CNB、.cnb.yml、web_trigger、CNB 流水线、GHA to CNB、cnb.cool migration。即使用户没有直接说出"CNB"或".cnb.yml"，只要是在讨论把仓库的 CI/CD 从 GitHub Actions 换成云原生构建平台、写 CNB 流水线配置、或排查 CNB 构建失败/触发器问题，也应主动使用这个技能，而不是凭经验直接手写配置。"
 ---
 
 # GitHub Actions → CNB 迁移
@@ -108,7 +108,7 @@ Runner 依赖基线（几乎每个迁移都需要；缺一项通常在 `install`
 
 1. 触发是否生效（按钮 / 定时 / push）。
 2. 写入是否生效（目标分支是否有新提交）。
-3. 发布是否生效（Release 是否有资产；`target_commitish` 等必填字段是否补全）。
+3. 发布是否生效（Release 是否有资产）。内置 `type: git:release` 任务够用就优先用它（字段：`tag`/`title`/`description`/`preRelease`/`latest`，示例见 [references/example.cnb.yml](references/example.cnb.yml)）；只有自己写脚本直调 CNB OpenAPI 创建 release 时才需要关心 `target_commitish` 这类 API 请求字段，别和 `.cnb.yml` 里的任务字段混为一谈——这是真实踩过的混淆。
 4. 运行时是否可读（下游消费方能否按新链路拉到产物）。
 
 查证据用 CNB OpenAPI，不要只看页面颜色：

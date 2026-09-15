@@ -25,7 +25,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SIBLINGS="$(cd "${REPO_ROOT}/.." && pwd)"
+SIBLINGS="${AGENT_SKILLS_SIBLINGS:-$(cd "${REPO_ROOT}/.." && pwd)}"
 CATALOG="${REPO_ROOT}/skills/catalog.json"
 
 TARGETS=(

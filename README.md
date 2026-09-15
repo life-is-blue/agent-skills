@@ -11,6 +11,7 @@ its scripts and references remain available.
 | `branded-pptx` | bundled | Build decks from an outline on your own .pptx template, with layout verification |
 | `coding-agent` | adapter | Run supported coding CLIs as monitored workers, with structured Codex and agy modes returning machine-readable result envelopes |
 | `coordinator` | adapter | The coordinating agent's control-plane playbook: grill vague requirements, freeze task briefs, and run multi-round verified loops; bundles the state-machine runner that drives the coding-agent transport |
+| `github-actions-to-cnb` | protocol-only | Migrate a repo's GitHub Actions workflows to CNB (Cloud Native Build) pipelines: inventory, primitive mapping, secrets, dry-run, dual-track cutover |
 | `office-mpp` | bundled | Read, analyze, export, create, and edit Microsoft Project or MSPDI files |
 | `openclaw-coding-agent` | adapter | Run supported coding CLIs through OpenClaw sessions and notifications |
 | `pdf-to-markdown` | protocol-only | Guide a host-provided PDF-to-Markdown workflow |

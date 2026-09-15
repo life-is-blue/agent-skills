@@ -14,6 +14,10 @@
       "distribution": "adapter"
     },
     {
+      "name": "github-actions-to-cnb",
+      "distribution": "protocol-only"
+    },
+    {
       "name": "office-mpp",
       "distribution": "bundled"
     },

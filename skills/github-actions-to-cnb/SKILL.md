@@ -39,7 +39,7 @@ description: "将 GitHub Actions workflow（.github/workflows/*.yml 或 *.yaml�
 
 | GitHub Actions | CNB 转换方式与边界 |
 |---|---|
-| workflow / job / step | 对应 Pipeline / Stage / Job 是起点。**同事件多 Pipeline 并行**，Pipeline 内 stages 顺序执行；Stage 内 jobs 数组串行、对象并行。不要把列表顺序误当跨 Pipeline 依赖。 |
+| workflow / job / step | 对应 Pipeline / Stage / Job 是起点。**同事件多 Pipeline 并行**，Pipeline 内 stages 顺序执行；Stage 内 jobs 数组串行、对象并行。GHA jobs 默认工作区隔离，同一 CNB Pipeline 的 stages 则共享工作区；合并前核对生成文件、checkout 状态、服务和环境生命周期。不要把列表顺序误当跨 Pipeline 依赖。 |
 | `needs` / outputs | 简单依赖放同一 Pipeline 顺序 stages；必须跨 Pipeline 时用 `cnb:await` / `cnb:resolve`，核对 key、失败和等待超时。`exports` 只在当前 Pipeline 生效；同步不等于传输文件。 |
 | checkout / setup-* / `runs-on` | CNB 默认 checkout；按实际需要配置 git 参数和镜像/runtime。Linux 容器不等价于 Windows/macOS；不能用删掉矩阵项或单纯换镜像冒充支持。 |
 | `schedule.cron` | 明确分支下的 `"crontab: <expr>"`，最小间隔 5 分钟。CNB 使用 `Asia/Shanghai`；按源 schedule 的实际时区（默认 UTC）转换，连同星期/日期跨日与夏令时检查，不能只复制表达式。 |
@@ -68,7 +68,7 @@ description: "将 GitHub Actions workflow（.github/workflows/*.yml 或 *.yaml�
 
 ## 3. 验证与修复闭环
 
-1. **本地先验**：检查差异、YAML 解析/重复键、锚点展开和触发器配对；有适配 CNB 的校验器时使用。普通 YAML 通过不代表 CNB 语义有效。核对执行图、权限门禁、产物到消费者的完整路径，运行范围内可安全执行的 install/build/test。未解决的占位符不是可运行配置，需明确标为待补项。
+1. **本地先验**：检查差异、YAML 解析/重复键、锚点展开和触发器配对；有适配 CNB 的校验器时使用。普通 YAML 通过不代表 CNB 语义有效。核对执行图、权限门禁、产物到消费者的完整路径；若把多个 GHA jobs 合入同一 Pipeline，还要验证前序留下的文件、进程或仓库修改不会污染后续 stage，隔离是正确性要求时保留独立 Pipeline 并显式同步依赖、传输产物。运行范围内可安全执行的 install/build/test。未解决的占位符不是可运行配置，需明确标为待补项。
 2. **针对性验证**：检查实际支持的入口和边界：路径命中/不命中、inputs 默认值、dry-run 缺失/1/0/非法值、失败是否阻止发布、首次与重跑的 Release 行为。用无副作用替身验证写入分支，不为验收制造真实发布。无需每次小改都遍历无关链路。
 3. **远程按范围**：获准后选最小代表性构建，先确认所有外部副作用被跳过，再触发；手动/CLI/API 选可用路径，不强制按钮。覆盖不同语义的路径，而非机械连续跑 3 次。读不到日志或缺认证时完成本地部分，标出远程待验，不凭空编造 SN，也不擅自申请更高权限。
 4. **证据驱动修复**：远程记录版本、事件、SN、相关 Pipeline/Stage、退出状态与日志；仅对实际测试的写入/发布检查对应目标与消费者。定位首个因果错误及其上下文，不盲修最后一行连带错误；一次处理一个有证据的根因及必要关联修改，复验受影响路径。没有新证据或相关输入变化，不重复相同失败命令。

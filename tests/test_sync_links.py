@@ -30,6 +30,7 @@ CLIENT_DIRS = [
 IN_REPO_SKILLS = {
     "coding-agent": REPO_ROOT / "skills" / "coding-agent",
     "coordinator": REPO_ROOT / "skills" / "coordinator",
+    "github-actions-to-cnb": REPO_ROOT / "skills" / "github-actions-to-cnb",
     "search-docs": REPO_ROOT / "skills" / "search-docs",
 }
 

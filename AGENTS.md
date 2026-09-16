@@ -101,6 +101,10 @@ repository documents describe current behavior.
   relies on inside its own directory, in its own words. Cross-skill repetition
   of a rule is the price of portability, not debt. Depending on a sibling
   Skill is allowed only with an explicit install instruction in SKILL.md.
+- For same-machine development installs, add the Skill to
+  `scripts/sync_links.sh` and use its managed symlinks so the repository remains
+  the single source of truth. Copy a Skill only for an explicitly independent
+  snapshot or distribution artifact; never overwrite a real target directory.
 - Update `skills/catalog.json` when adding, deleting, or renaming a Skill.
 - Classify delivery as `bundled`, `adapter`, or `protocol-only` according to the
   implementation actually present in the Skill directory.

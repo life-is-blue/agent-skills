@@ -1,119 +1,108 @@
-# Generic worked skeleton — not a project's real .cnb.yml.
-# Copy to a repo root as .cnb.yml, then replace <PLACEHOLDER> values and the
-# stage scripts with the real commands identified during Inventory/Map.
-# Verified against https://docs.cnb.cool/zh/build/grammar.html.
+# Adaptation skeleton, NOT a ready-to-run migration. Replace every placeholder,
+# main/tag patterns, timeouts and commands from the source workflow. Keep only
+# events it actually needs. Install/check/build commands must have no external
+# writes, including lifecycle hooks. No production credentials are loaded here.
+# Grammar: https://docs.cnb.cool/zh/build/grammar.html
 
-# --- 1. PR/push quality gate: fast, always runs, no write access needed. ---
-.verify-check: &verify-check
-  name: verify-check
-  ifModify:
-    - .cnb.yml
-    - .cnb/web_trigger.yml
-    - src/**
-    - package.json
-  docker:
-    image: <BASE_IMAGE>              # e.g. oven/bun:1, node:20, python:3.12
-  stages:
-    - name: install-system-deps
-      script: |
-        if command -v apt-get >/dev/null 2>&1; then
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            git ca-certificates openssh-client rsync curl jq
-          rm -rf /var/lib/apt/lists/*
-        elif command -v apk >/dev/null 2>&1; then
-          apk add --no-cache git ca-certificates openssh-client rsync curl jq
-        else
-          echo "Unsupported package manager: need apt-get or apk" >&2
-          exit 1
-        fi
-    - name: install
-      script: <INSTALL_COMMAND>       # e.g. bun install --frozen-lockfile
-    - name: check
-      script: <CHECK_COMMAND>         # e.g. bun run check / npm test / pytest
-
-# --- 2. Build/publish job: mutually exclusive, secrets via imports. ---
-.build-publish: &build-publish
-  name: build-publish
-  lock:
-    key: <REPO_NAME>-build-publish
-    wait: true
-    cancel-in-wait: true
-    timeout: 1800                    # seconds to wait for the lock
-    expires: 3600                    # seconds before a stuck lock auto-releases
-  ifModify:
-    - .cnb.yml
-    - src/**
+.build-check: &build-check
+  name: build-check
   docker:
     image: <BASE_IMAGE>
-  # Secrets repo: keys become env vars, injected automatically. Never inline
-  # secret values here. https://docs.cnb.cool/zh/repo/secret.html
-  imports:
-    - https://cnb.cool/<ORG>/<SECRET_REPO>/-/blob/main/<PROJECT>.env.yml
-  env:
-    # Bridge CNB built-ins to whatever your scripts currently read from
-    # GITHUB_REF_NAME/GITHUB_SHA during the migration's transition period.
-    GITHUB_REF_NAME: $CNB_BRANCH
-    GITHUB_SHA: $CNB_BRANCH_SHA
-    DRY_RUN: "${DRY_RUN:-1}"
   stages:
-    - name: install
+    - &install
+      name: install
+      timeout: 10m
       script: <INSTALL_COMMAND>
-    - name: build
+    - &check
+      name: check
+      timeout: 10m
+      script: <CHECK_COMMAND>
+    - &build
+      name: build
+      timeout: 30m
       script: <BUILD_COMMAND>
-    - name: run-long-task
-      # A job's default timeout is 2h (and it is killed after 10 minutes with
-      # no stdout/stderr output, even before that). If a step can legitimately
-      # run longer, declare it explicitly (ceiling: 12h) rather than assume
-      # the default is enough — a silent kill mid-run is worse than a
-      # deliberate checkpoint-and-exit. https://docs.cnb.cool/zh/build/timeout.html
-      timeout: 6h
-      script: <LONG_RUNNING_COMMAND>
-    - name: maybe-publish
-      script: |
-        if [ "${DRY_RUN}" = "1" ]; then
-          echo "DRY_RUN=1: skip publish."
-          exit 0
-        fi
-        <PUBLISH_COMMAND>
 
 main:
   push:
-    - <<: *verify-check
-    - <<: *build-publish
+    - <<: *build-check
+      # Add ifModify only when the source workflow has path filters; include
+      # its actual source/config/lockfile paths. It is not a security guard.
   pull_request:
-    - <<: *verify-check
-  # Minimum interval is 5 minutes; shorter cron expressions are rejected.
-  # https://docs.cnb.cool/zh/build/crontab.html
-  "crontab: 0 16 * * 1":
-    - <<: *build-publish
-  # Event name referenced by .cnb/web_trigger.yml's `event:` field.
-  web_trigger_build_publish:
-    - <<: *build-publish
+    - <<: *build-check
+  # Optional handler: add the matching button from cnb-docs.md only if needed.
+  web_trigger_verify:
+    - <<: *build-check
+  # Optional schedule, intentionally inactive until explicitly in scope.
+  # CNB uses Asia/Shanghai. Convert the source timezone, including day rollover.
+  # "crontab: 0 16 * * 1":
+  #   - <<: *build-check
 
-# Tag-triggered jobs live under the catch-all branch key ($), not `main`.
-# --- 3. Release on tag: only add this if you're actually migrating the
-# release/publish workflow (Classify usually defers this to a later phase).
-# Two different things, don't conflate them:
-#   - `type: git:release` is a .cnb.yml pipeline task. Its fields are `tag`,
-#     `title`, `description`/`descriptionFromFile`, `preRelease`, `latest`,
-#     `overlying` — there is no `target_commitish` here.
-#   - If you instead call CNB's OpenAPI directly from a custom script (e.g.
-#     porting a `gh release create` call), THAT request body needs its own
-#     `target_commitish` field — a real production bug in this org came from
-#     omitting it there, not from the git:release task above.
+# Optional release chain. Match the SOURCE tag filters; "$" is only a fallback,
+# not a requirement for all tag events. Use exact/glob tag keys where needed.
 $:
   tag_push:
-    - <<: *build-publish
-    - name: release
+    - name: build-and-release
+      docker:
+        image: <BASE_IMAGE>
+      env:
+        # This tag entry has no editable button parameter. Keep writes disabled
+        # until cutover is explicitly authorized; then change this value to "0".
+        # If adapting to editable web inputs, do not duplicate DRY_RUN in env.
+        DRY_RUN: "1"
       stages:
-        - name: upload-attachments
-          image: cnbcool/attachments:latest
-          settings:
-            attachments:
-              - dist/**
-        - name: create-release
-          type: git:release
-          options:
-            title: <RELEASE_TITLE>
-            descriptionFromFile: CHANGELOG.md
+        - name: validate-write-mode
+          timeout: 1m
+          script: |
+            case "${DRY_RUN:-1}" in
+              0|1) ;;
+              *) echo "DRY_RUN must be 0 or 1" >&2; exit 1 ;;
+            esac
+        # Same Pipeline: stages are sequential and share the workspace.
+        - *install
+        - *check
+        - *build
+        - name: verify-artifact
+          timeout: 1m
+          # This skeleton expects one nonempty regular file, not a directory or
+          # glob. For multiple artifacts, expand and validate every intended file.
+          script: test -f "<ARTIFACT_PATH>" && test -s "<ARTIFACT_PATH>"
+        - name: publish-release
+          # Missing/empty values stay read-only. A variable is NOT authorization:
+          # trust the triggering code and restrict who can change/run this entry.
+          if: '[ "${DRY_RUN:-1}" = "0" ]'
+          # Do not add ifModify/ifNewBranch alongside this if: they combine as OR.
+          lock:
+            key: release-$CNB_REPO_SLUG
+            wait: true
+            timeout: 60
+            # Lock covers only this serial 5m + 10m publication block.
+            # Tune with the real job ceilings; expiry must outlast the block.
+            expires: 1800
+          jobs:
+            - name: create-release
+              timeout: 5m
+              type: git:release
+              options:
+                # tag defaults to the triggering tag for tag_push.
+                title: $CNB_BRANCH
+                description: <RELEASE_DESCRIPTION>
+                # Default false deletes/recreates an existing Release. Avoid
+                # that destructive default; verify first-run and rerun behavior.
+                overlying: true
+            - name: upload-attachments
+              timeout: 10m
+              image: cnbcool/attachments:latest
+              settings:
+                # A tag Release MUST exist before uploading its attachments.
+                # Here tag_push selects that Release; other events default to
+                # commit attachments unless a tag is explicitly supplied.
+                attachments:
+                  - <ARTIFACT_PATH>
+
+# External secrets, only IF a real source task needs them:
+# put imports on the minimal trusted Pipeline/Stage/Job, with the secret store's
+# allow_* rules reviewed. include imports CI config, not secret values.
+# imports:
+#   - https://cnb.cool/<ORG>/<SECRET_REPO>/-/blob/main/<PROJECT>.env.yml
+# Built-in same-repo Release tasks use the runtime CNB_TOKEN; don't introduce
+# a second secret store or expose its values just to use this skeleton.

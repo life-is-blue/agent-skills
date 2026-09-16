@@ -1,142 +1,88 @@
 ---
 name: github-actions-to-cnb
-description: "将仓库的 GitHub Actions workflow（.github/workflows/*.yml）迁移为 CNB（Cloud Native Build，cnb.cool）流水线（.cnb.yml / .cnb/web_trigger.yml）。给出六阶段迁移流程（Inventory/Classify/Map/Secrets/Dry-run/Dual-track cutover）、GitHub Actions 到 CNB 的原语映射表（schedule/workflow_dispatch/push.paths/concurrency/matrix/cache/artifact/secrets/token）、runner 系统依赖基线，以及证据化排障命令。触发词：GitHub Actions 迁移 CNB、迁移到 CNB、.cnb.yml、web_trigger、CNB 流水线、GHA to CNB、cnb.cool migration。即使用户没有直接说出"CNB"或".cnb.yml"，只要是在讨论把仓库的 CI/CD 从 GitHub Actions 换成云原生构建平台、写 CNB 流水线配置、或排查 CNB 构建失败/触发器问题，也应主动使用这个技能，而不是凭经验直接手写配置。"
+description: "将 GitHub Actions workflow（.github/workflows/*.yml 或 *.yaml）迁移为 CNB（cnb.cool）的 .cnb.yml 与按需配置的 .cnb/web_trigger.yml。用于 GHA to CNB、迁移到 CNB、迁移后的触发器/依赖/产物/权限排错，以及审阅转换是否等价；即使未点名技能，只要源平台是 GitHub Actions、目标明确是 CNB，也应使用。不是通用 CNB 配置技能，不把迁往其他云原生 CI 的请求自动当作 CNB。"
 ---
 
 # GitHub Actions → CNB 迁移
 
-把一个仓库的 GitHub Actions workflow 迁移为 CNB `.cnb.yml` 流水线。目标平台专属：不适用于迁到其他 CI（不同平台的原语不通用）。
+交付与源 workflow 语义对应的 CNB 配置，保留必要的触发条件、依赖、权限和产物消费者；不是逐字段替换，也不是默认重构 CI。
 
-## 核心原则
+本技能为 **protocol-only**：只提供流程、映射和示例，不捆绑 CLI、校验器或执行服务。读写文件和本地验证使用宿主工具；远程取证需要已配置的 CNB CLI、API 或页面访问。没有这些工具不妨碍完成本地转换。
 
-1. **不删旧的**：迁移期间 `.github/workflows/` 保留不动。回滚 = 重新打开触发器，不是代码回退。
-2. **先只读不写**：第一轮先跑通 dry-run（`DRY_RUN=1` 或等价开关），只验证 install/build/test 链路，不碰 deploy/release。
-3. **一个开关管一件事**：`env` 放不可编辑默认值，页面可编辑参数放 `inputs`；两者同名会导致该参数在 CNB 页面上渲染成不可编辑，形同虚设。
-4. **证据优先**：每次改动后必须能给出 build SN + 失败 stage 的日志行，不能凭感觉判断"应该好了"。
+## 执行合同：自主性、澄清、批准、完成
 
-## Preflight
+在宿主安全规则和用户明确范围内执行；本节随技能独立分发，不依赖仓库根规则。
 
-```bash
-test -d .github/workflows && ls .github/workflows/*.yml
-command -v cnb >/dev/null 2>&1 || echo "no cnb CLI: 用 curl + \$CNB_TOKEN 走 OpenAPI 取证据"
-```
+- **自主性**：迁移/修复请求包含范围内的本地读取、修改与无外部副作用验证；仅审阅/解释则只读。先检查工作区，保留无关修改，复用已有脚本、运行时版本和包管理器。能从文件、Git、工具帮助或文档查明的事实，不让用户重复提供。
+- **澄清**：只把检查后仍未知、且会改变结果的选择合并为一次提问，例如 Release 继续发 GitHub 还是迁到 CNB、不可替代的 Windows/macOS runner 如何处理。已明确的范围不再问；可逆且不改变行为的实现细节自行选择，最后集中披露。阻塞某条链路时，继续独立部分，不反复询问同一问题。
+- **批准**：普通迁移不自动授权 commit、push、PR、触发远程构建（即使 dry-run）、启停远程触发器、发布/部署、删除、创建或修改凭据/权限、工作区外写入及付费调用。临近执行时一次列齐目标、动作和副作用；用户已明确批准的同范围动作不再逐步确认，范围或代价变化才补批。使用已有认证读取获准资源不等于管理凭据；不输出密钥。`DRY_RUN=0` 是技术开关，不是用户授权。
+- **完成**：按用户请求区分「本地配置已转换并验证」「远程验证通过」「已切流」。未要求上线时，不以 build SN、生产写入或三次远程成功作为本地交付门槛；请求包含上线时，也不能用本地通过冒充完成。持续修复范围内问题，直到验收满足或存在确需用户处理的阻塞。
+- **规模**：所选 workflow 的发布、matrix、下游消费都在转换范围内，不因复杂而静默跳过；实际发布另受批准边界约束。不为简单 CI 强加 dry-run 开关、手动按钮、密钥仓、Dockerfile、检查点或多阶段切流，也不生成额外计划/审计报告文件。
 
-## 六阶段流程
+## 1. 盘点并确定验收
 
-### 1. Inventory（盘点）
+读取 `.github/workflows/` 下的 `.yml` **和** `.yaml`、被调用的 reusable/composite workflow、脚本、现有 CNB 配置及必要的仓库说明。找不到源文件时先检查路径和用户所指范围，不凭空生成；已有 CNB 配置做最小合并，不整份覆盖。
 
-逐个读 `.github/workflows/*.yml`，记录：
+在对话/任务状态中记录必要对应关系，不另建文档：
 
-- 触发方式：`schedule.cron` / `workflow_dispatch` / `push.paths` / `pull_request`
-- 并发控制：`concurrency.group` + `cancel-in-progress`
-- 密钥：`secrets.*` / `vars.*`，记键名和使用位置
-- 产物链路：`actions/upload-artifact` 是否被下游 job 消费；是否创建 GitHub Release
-- 平台专有依赖：`github.token`、`GITHUB_STEP_SUMMARY`、`GITHUB_REF_NAME`/`GITHUB_SHA`、`gh` CLI
+- **事件**：push/PR 的分支、tag、路径、活动类型，schedule 的时区，手动 inputs 及默认值。
+- **执行图**：`needs`、条件、outputs、matrix 组合及 include/exclude、并行/取消策略、失败是否允许。
+- **环境**：OS/架构、runtime、shell、工作目录、checkout 深度/tag/submodule/LFS、services、cache、超时。
+- **边界**：只记 secrets/vars 的键名与用途；检查脚本、安装钩子及插件中隐藏的 push、发布、上传、删除、通知、付费 API 调用。不能因步骤叫 build/test 就认定无副作用。
+- **消费者**：产物名称/路径/保留期、跨 job 下载、Release 目标、外部下载者和必需状态检查。源已明确保留在 GitHub 的消费者不擅自迁平台。
 
-### 2. Classify（分层）
+以用户选定的 workflow 为范围；未点名文件时盘点全部，并列明每条链路的转换/阻塞状态。优先验证低副作用构建，但不借此省略发布链路。实现前明确当前交付层级及可检查的成功标准。
 
-把每个 workflow 归到一类，决定迁移顺序：
+## 2. 保持语义地映射
 
-| 类型 | 迁移优先级 | 理由 |
-|---|---|---|
-| 数据/计算构建（跑测试、生成产物） | 优先 | 风险低，收益直接 |
-| PR/push 质量门禁（check/lint） | 次优先 | 省 GitHub Actions 分钟数 |
-| 发布链路（多平台 matrix、npm publish 等） | 默认暂不迁 | matrix 改造成本高，出错直接影响用户 |
+遇到不确定的字段/行为，按 [官方文档索引](references/cnb-docs.md) 只读相关主题；先看原文，再写配置。官方总览、详细页或旧校验器不一致时，以具体字段文档和可观察行为核对，明确剩余差异，不猜等价关系。
 
-### 3. Map（映射）
+| GitHub Actions | CNB 转换方式与边界 |
+|---|---|
+| workflow / job / step | 对应 Pipeline / Stage / Job 是起点。**同事件多 Pipeline 并行**，Pipeline 内 stages 顺序执行；Stage 内 jobs 数组串行、对象并行。不要把列表顺序误当跨 Pipeline 依赖。 |
+| `needs` / outputs | 简单依赖放同一 Pipeline 顺序 stages；必须跨 Pipeline 时用 `cnb:await` / `cnb:resolve`，核对 key、失败和等待超时。`exports` 只在当前 Pipeline 生效；同步不等于传输文件。 |
+| checkout / setup-* / `runs-on` | CNB 默认 checkout；按实际需要配置 git 参数和镜像/runtime。Linux 容器不等价于 Windows/macOS；不能用删掉矩阵项或单纯换镜像冒充支持。 |
+| `schedule.cron` | 明确分支下的 `"crontab: <expr>"`，最小间隔 5 分钟。CNB 使用 `Asia/Shanghai`；按源 schedule 的实际时区（默认 UTC）转换，连同星期/日期跨日与夏令时检查，不能只复制表达式。 |
+| `workflow_dispatch` / inputs | 需要页面入口时才创建 `.cnb/web_trigger.yml`，结构为 `branch[].buttons[]`，`event` 对应 `.cnb.yml` 的 `web_trigger` 或 `web_trigger_*`。可编辑参数只放按钮 `inputs`，预置不可编辑值放按钮 `env`，不要同名双写。 |
+| push/PR 分支、tag、paths | 保留事件过滤语义；`tag_push` 按 Tag 名匹配，支持精确名/glob/`$` 兜底。`ifModify` 可放 Pipeline/Stage/Job，但仅在支持变更统计的事件生效，新分支/定时等可能忽略检查，不能充当写权限门禁。 |
+| `if` / `${{ ... }}` | CNB Stage/Job `if` 是退出码为 0 才执行的 shell 条件，不是 GHA 表达式。同层 `if`、`ifModify`、`ifNewBranch` 是 **OR**；需要 AND 时在一个明确条件内组合，勿并列后误以为双重保护。 |
+| `concurrency` | 根据原语义选择 `lock.key`、`wait`、`cancel-in-progress`、`cancel-in-wait`；不要把排队替换为取消。锁范围按 workflow/ref/目标资源确定；`expires` 覆盖受保护操作的最长时限，`timeout` 是等待锁的时间，二者单位为秒。 |
+| `strategy.matrix` | 不原生支持自动矩阵展开；显式展开实际组合，用 YAML 锚点复用。保留 OS/架构、并行与失败策略；只在不改变要求时顺序化，不默认写生成框架。 |
+| `actions/cache` | 节点文件缓存需显式配置 volume，跨节点可用 `docker:cache`。不是自动等价替代 cache key；核对路径、隔离/失效策略，冷缓存也必须成功。按收益选最小方案。 |
+| upload/download artifact | 同 Pipeline 工作区可直接共享；跨 Pipeline 必须显式传输并处理依赖。`cnbcool/attachments` 支持 commit/Release 附件及 DOWNLOAD，但不是 GHA 运行级 artifact 的无损替代；按目标 commit/tag、命名、保留期和消费者核对。 |
+| `secrets.*` / `vars.*` | 密钥通过 `imports` 引用密钥仓；普通配置可用 `env`，不必全建密钥。`include` 合并流水线配置，**不是**直接导入密钥文件。 |
+| `github.token` / `gh` | 只有目标 API 也迁至 CNB 时才改用 CNB 工具和相应认证。`CNB_TOKEN` 是流水线期令牌，权限取决于事件/仓库，不能认证 GitHub；保留 GitHub 发布则保留其认证和目标。 |
+| `GITHUB_REF_NAME` / `GITHUB_SHA` | push/tag 可按用途映射 `CNB_BRANCH` / `CNB_COMMIT`。PR 中 CNB_BRANCH 是目标分支，CNB_COMMIT、预合并 SHA 与实际 checkout 可不同；用 PR 专用变量或 `git rev-parse HEAD` 保留脚本原来需要的身份，勿全局机械替换成 CNB_BRANCH_SHA。 |
+| `GITHUB_ENV` / `GITHUB_OUTPUT` / summary | 按用途改为 CNB `exports`、共享文件或日志；shell 的 export 不自动跨任务。保留被消费的输出，展示摘要不必重建一套服务。 |
 
-逐条对照下表，把每个 GitHub Actions 原语落到 `.cnb.yml` 草稿：
+只补镜像/脚本确实缺少的系统工具；不要默认安装 git/SSH/rsync/curl/jq 全家桶或强制新建镜像。Job 默认总超时 2h、无输出 10min；显式 `timeout` 会同时改变这两个时限，Job 最大 12h、Pipeline 最长 20h。按原任务需求配置；超时不自动授权重构检查点或扩大资源。
 
-| GitHub Actions | CNB | 备注 |
-|---|---|---|
-| `schedule.cron` | 顶层事件 `"crontab: <cron 表达式>"` | 最小调度间隔通常 5 分钟 |
-| `workflow_dispatch`（+ `inputs`） | `.cnb/web_trigger.yml` 的 `buttons[].inputs` | 页面可编辑参数只能放 `inputs`，不能放 `env` |
-| `push.paths` | `ifModify` | 可配在 pipeline/stage/job 级 |
-| `concurrency.group` + `cancel-in-progress` | `lock.key` + `cancel-in-progress` / `cancel-in-wait` | 可做互斥或排队抢占 |
-| `strategy.matrix` | 无原生 matrix | 用 YAML 锚点（`&anchor` / `<<: *anchor`）复制多份，或改成单 pipeline 顺序 stage |
-| `actions/cache` | docker 镜像自带缓存 + CNB 内置节点缓存 | 无需手工声明 cache key |
-| `actions/upload-artifact` + 下游消费 | `cnbcool/attachments:latest`，或直接用 CNB Release + 附件 | |
-| `secrets.*` / `vars.*` | 私有 `imports` 密钥仓 + `env` 块读取 | 见下方 Secrets |
-| `github.token` / `gh` CLI | 内置 `CNB_TOKEN`（可信事件下自动注入） | 部署令牌只读，不能建 release |
-| `GITHUB_STEP_SUMMARY` | 无直接对应 | 改为脚本 `echo` 到标准输出，靠日志排障 |
-| `GITHUB_REF_NAME` / `GITHUB_SHA` | `CNB_BRANCH` / `CNB_BRANCH_SHA` | 过渡期可在脚本里做变量兼容映射 |
+### 密钥与写入隔离
 
-Runner 依赖基线（几乎每个迁移都需要；缺一项通常在 `install` 阶段才报错）：
+- 为实际用到的密钥保留「源键 → 目标键/引用 → 环境变量 → 消费步骤」映射，不读取/复制实际值到对话或业务仓库。凭据尚未配置时说明所需键与目标位置，继续无关构建；不要求用户在聊天中粘贴 token。
+- `imports` 限于需要密钥的最小作用域；按密钥仓的 `allow_slugs` / `allow_events` / `allow_branches` 等规则控制引用，修改这些规则需要授权。受控公共配置仓 + `include` 是跨仓治理的可选方案，不是每次迁移都要新建的依赖。
+- 不可信 PR/评论配置或代码不能进入带发布权限/生产密钥的执行链。不能仅靠分 stage、按钮权限、用户可改的 DRY_RUN 或平台默认 token 限权；可信事件也不应携带密钥执行未审代码。
+- 存在写入时先采用无写入验证路径。`DRY_RUN` 不是平台内置沙箱：每个写入脚本/插件/内置任务都要被实际门禁覆盖；只允许显式 `0` 进入写入，缺失/空值默认只验证，非法值报错。shell 默认值放在 shell 中，不假定 YAML `env` 执行 `${VAR:-1}`。
 
-```yaml
-- name: install-system-deps
-  script: |
-    if command -v apt-get >/dev/null 2>&1; then
-      apt-get update
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        git ca-certificates openssh-client rsync curl jq
-      rm -rf /var/lib/apt/lists/*
-    elif command -v apk >/dev/null 2>&1; then
-      apk add --no-cache git ca-certificates openssh-client rsync curl jq
-    else
-      echo "Unsupported package manager: need apt-get or apk" >&2
-      exit 1
-    fi
-```
+按需参考 [适配骨架](references/example.cnb.yml)；它含占位符和可选事件，不能原样声称可执行或整份复制。仅选源 workflow 需要的部分；手动按钮配置见 [索引中的配套示例](references/cnb-docs.md#手动验证入口按需)。
 
-按实际脚本裁剪包列表；`rsync` 最容易被漏掉（往往要等 deploy 阶段用 worktree 同步时才报错）。
+## 3. 验证与修复闭环
 
-单个 job 默认超时 2 小时（另外无输出 10 分钟也会被判定超时），上限可显式声明到 12 小时。GitHub Actions 里跑很久没设超时的 job（LLM 批处理、大型构建）迁过来不要假设默认够用——这是真实踩过的坑：先做检查点/优雅退出，或显式声明 `timeout:`，不要等它被静默杀掉才发现。
+1. **本地先验**：检查差异、YAML 解析/重复键、锚点展开和触发器配对；有适配 CNB 的校验器时使用。普通 YAML 通过不代表 CNB 语义有效。核对执行图、权限门禁、产物到消费者的完整路径，运行范围内可安全执行的 install/build/test。未解决的占位符不是可运行配置，需明确标为待补项。
+2. **针对性验证**：检查实际支持的入口和边界：路径命中/不命中、inputs 默认值、dry-run 缺失/1/0/非法值、失败是否阻止发布、首次与重跑的 Release 行为。用无副作用替身验证写入分支，不为验收制造真实发布。无需每次小改都遍历无关链路。
+3. **远程按范围**：获准后选最小代表性构建，先确认所有外部副作用被跳过，再触发；手动/CLI/API 选可用路径，不强制按钮。覆盖不同语义的路径，而非机械连续跑 3 次。读不到日志或缺认证时完成本地部分，标出远程待验，不凭空编造 SN，也不擅自申请更高权限。
+4. **证据驱动修复**：远程记录版本、事件、SN、相关 Pipeline/Stage、退出状态与日志；仅对实际测试的写入/发布检查对应目标与消费者。定位首个因果错误及其上下文，不盲修最后一行连带错误；一次处理一个有证据的根因及必要关联修改，复验受影响路径。没有新证据或相关输入变化，不重复相同失败命令。
+5. **收尾而非早停**：push 成功、worker 报告或页面变绿不等于验收通过。若请求包含远程验收，收集终态与有效产物后再报告通过；宿主有异步恢复机制时交接当前 SN/待验项，否则按工具能力跟进。权限/环境/服务故障只阻塞依赖步骤，不把它冒充候选配置通过或直接放弃全部任务。
 
-完整可执行的骨架示例见 [references/example.cnb.yml](references/example.cnb.yml)（含锚点复用、`lock`、`imports`、`crontab`、`web_trigger`、`tag_push` 的组合写法）；每个字段的权威语法定义见 [references/cnb-docs.md](references/cnb-docs.md)。
+远程工具不是固定依赖：先查本机 `cnb --help`，存在对应命令后再查该子命令帮助、做最小只读查询，不能照抄未经验证的 CLI 子命令/参数。缺 CLI 可用已有 API/页面能力；取完整日志时核对官方接口、HTTP 状态、返回结构和分页，不能对错误响应盲目 `jq` 后宣布成功。
 
-### 4. Secrets（密钥映射）
+## 4. 切流与回滚（仅在请求包含时执行）
 
-1. 不把密钥写进 `.cnb.yml` 或提交历史。用 `imports` 指向受控的私有密钥仓库文件（机制见 [references/cnb-docs.md](references/cnb-docs.md) 的 Secret store 条目）。
-2. 建一张映射表：GitHub 密钥名 → CNB 密钥仓键名 → 注入后环境变量名 → 使用位置。逐条核对，不留遗漏。
-3. 含密钥的 `imports` 只放受控仓库；业务仓库通过 `include` 引用，不直接内联敏感内容。
+- **转换期间保留旧 workflow 文件和触发行为**。经授权切流时可调整旧触发器；“保留回滚入口”不等于“永远禁止编辑旧配置”。删除文件另需明确授权。
+- 双轨验证只适用于确有上线迁移需要的链路。没有 schedule 就不新增定时观察；纯测试 CI 不必三阶段发布。对 push/tag/schedule/manual/外部调用逐项确认唯一写入方，不只关 GitHub schedule 却留下 tag 双重发布。
+- 上线前确认产物消费者与必需检查仍有效。先停旧写入入口并确认没有在途写入，再开启 CNB 写入，避免双发；取消在途运行也属于需授权的操作。切流窗口不混入无关业务改造。
+- 回滚顺序是先停 CNB 写入、确认在途状态，再恢复旧入口。开关只恢复后续路由，不能撤销已发布资产或已写数据；涉及恢复/删除另按实际影响授权，不承诺所有迁移都能瞬时回滚。
 
-### 5. Dry-run（先跑通逻辑，不动生产）
+## 交付
 
-1. 先用页面按钮触发（`web_trigger`），`DRY_RUN=1`：只验证 install/build/test 链路，跳过 deploy/release。
-2. 连续拿到 3 次成功的 build SN 再进入下一阶段——一次绿不算数。
-3. 不可信事件（PR / 评论触发）不得跑到带写权限的 stage：这类事件下 `CNB_TOKEN` 权限本身就被平台限制，但流水线配置来自可被外部修改的源分支，敏感操作仍要靠 stage 划分主动隔离（细节见 [references/cnb-docs.md](references/cnb-docs.md) 的 Trigger rules 条目）。
-
-### 6. Dual-track → Cutover（双轨切流）
-
-1. 阶段 A：GitHub Actions 照常跑；CNB 只手动 / dry-run。
-2. 阶段 B：CNB 开 `crontab`，仍 `DRY_RUN=1`，观察稳定性。
-3. 阶段 C：CNB `DRY_RUN=0`；同时**注释掉**（不是删除）GitHub workflow 里的 `schedule`，保留 `workflow_dispatch` 作为回滚入口。
-4. 切流当天只改触发器，不改业务脚本——回滚永远是分钟级的开关翻转，不是代码回退。
-
-## 验证证据（每次改动后过一遍）
-
-1. 触发是否生效（按钮 / 定时 / push）。
-2. 写入是否生效（目标分支是否有新提交）。
-3. 发布是否生效（Release 是否有资产）。内置 `type: git:release` 任务够用就优先用它（字段：`tag`/`title`/`description`/`preRelease`/`latest`，示例见 [references/example.cnb.yml](references/example.cnb.yml)）；只有自己写脚本直调 CNB OpenAPI 创建 release 时才需要关心 `target_commitish` 这类 API 请求字段，别和 `.cnb.yml` 里的任务字段混为一谈——这是真实踩过的混淆。
-4. 运行时是否可读（下游消费方能否按新链路拉到产物）。
-
-查证据用 CNB OpenAPI，不要只看页面颜色：
-
-```bash
-# 最近构建
-cnb build get-build-logs --path '{"repo":"<org>/<repo>"}' --query '{"page":1,"page_size":5}'
-# 某次构建的 stage 状态
-cnb build get-build-status --path '{"repo":"<org>/<repo>","sn":"<SN>"}'
-# 失败 stage 的完整日志（CLI 展示可能截断，改用 OpenAPI 直拉）
-curl -sS -H "Authorization: Bearer $CNB_TOKEN" -H "Accept: application/vnd.cnb.api+json" \
-  "https://api.cnb.cool/<org>/<repo>/-/build/logs/stage/<SN>/<pipeline-id>/<stage-id>" | jq -r '.content[]'
-```
-
-只根据"最后一个失败点"改动，一轮只改一处根因，改完立刻复验。
-
-## Anti-Patterns
-
-- 删除或改写 `.github/workflows/`——迁移期只加 CNB 配置，不动旧配置；回滚要靠开关，不是靠 git revert。
-- 同一个变量既放 `env` 又放 `inputs`——CNB 页面会把它渲染成不可编辑，参数形同虚设。
-- 把 `strategy.matrix` 硬套 CNB——CNB 没有原生 matrix，生搬会写出一堆重复 stage；要么用 YAML 锚点复用，要么改成单 pipeline 顺序执行。
-- 密钥直接写进 `.cnb.yml` 或提交历史——一律走密钥仓库 `imports`。
-- 没有连续 dry-run 成功记录就直接 `DRY_RUN=0` 切流。
-- 日志被截断时靠猜——用 `get-build-stage` / OpenAPI 拿完整内容，从尾部往前看（错误通常在最后几行）。
-- 不可信事件（PR / 评论触发）跑到带写权限的 stage。
-
-## 何时不适用
-
-- 目标平台不是 CNB（不同 CI 有各自的原语，映射表不通用）。
-- 只是想了解 CNB 本身——直接查 [references/cnb-docs.md](references/cnb-docs.md) 里链接的官方文档，不需要这份迁移协议。
-- Workflow 里没有触发器 / 密钥 / 发布链路（纯静态文件）——直接手写 `.cnb.yml` 即可，不必走六阶段流程。
+简要给出：已转换文件与范围、验证命令/结果（远程时附证据）、**关键决定与剩余差异**、当前完成层级。阻塞时说明已完成部分、具体证据、待验项和最小用户动作；无实质未决项时不以“是否继续”代替完成。只更新行为变更所需的既有文档，不把执行日志写成长期规则。

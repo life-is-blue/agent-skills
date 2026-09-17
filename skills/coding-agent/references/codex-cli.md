@@ -1,4 +1,4 @@
-# Codex CLI behavior
+# Codex and TCodex CLI behavior
 
 Verified locally on 2026-09-07 with `codex-cli 0.152.1`. Re-verify with
 `codex --help`, `codex exec --help`, `codex review --help`,
@@ -8,6 +8,13 @@ argument placement is version-sensitive.
 This note covers both Codex adapters in this Skill: the `codex_run.py`
 structured adapter and the Codex provider of the `coding-agent-run` plain-log
 runner.
+
+TCodex `0.1.3` was verified locally on 2026-09-17 with bundled Codex `0.154.0`.
+It forwards Codex arguments unchanged and is supported by both adapters under
+the distinct provider name `tcodex`. Use `tcodex -- --help` and
+`tcodex -- exec --help` for the upstream help surfaces; wrapper-level
+`tcodex --help` shows only TCodex commands. Keep Codex and TCodex thread history
+separate when resuming, even though their execution flags are compatible.
 
 ## Global options carry the run policy
 
@@ -53,16 +60,18 @@ it explicitly.
 
 ## Plain-log runner invocation (coding-agent-run)
 
-The plain-log runner sends the prompt on stdin to:
+The plain-log runner sends the prompt on stdin to the selected Codex-compatible
+binary:
 
 ```bash
-codex --ask-for-approval never exec --sandbox workspace-write -
+AGENT=codex # or tcodex
+"$AGENT" --ask-for-approval never exec --sandbox workspace-write -
 ```
 
 With explicit `--unsafe`, it instead uses:
 
 ```bash
-codex exec --dangerously-bypass-approvals-and-sandbox -
+"$AGENT" exec --dangerously-bypass-approvals-and-sandbox -
 ```
 
 Useful native alternatives include `codex exec review` and `codex exec resume`,

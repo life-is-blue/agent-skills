@@ -48,7 +48,7 @@ Top-level fields are schema version, role arrays and optional `execution`;
 `execution` accepts only boolean `local_commits`. Missing authorization in an old
 config means false, never an implicit upgrade. Candidate fields are `agent`,
 concrete `model`, and optional `effort`. The configured model
-adapters currently support Codex, agy, Claude Code and TClaude; other plain-log
+adapters currently support Codex, TCodex, agy, Claude Code and TClaude; other plain-log
 providers remain usable directly, not through this model gate. No credentials,
 permission bypass or spending grants belong in this config. Local commit consent
 is limited to the task's isolated implementer worktree; it does not override
@@ -150,7 +150,7 @@ directories. Existing private-state location/authorization requirements remain.
 
 Provider adaptation:
 
-- Codex runs fresh `exec` in the registered root; the runner does not enable
+- Codex and TCodex run fresh `exec` in the registered root; the runner does not enable
   native `--worktree` or infer a resume thread. Review has a separate context.
 - Claude Code runs print mode in that root, without native `--worktree`, tmux or
   background-session lifecycle. Native isolation checks must not be assumed

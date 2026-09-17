@@ -49,7 +49,7 @@ def test_plain_runner_forwards_configured_model_and_effort(tmp_path: Path):
     prompt = tmp_path / "prompt.txt"
     prompt.write_text("fixture")
     env = runner_env(bin_dir)
-    for agent in ("codex", "claude", "tclaude"):
+    for agent in ("codex", "tcodex", "claude", "tclaude"):
         make_provider(bin_dir, agent, 'printf "args:%s\\n" "$*"\nprintf "cwd:%s\\n" "$PWD"\ncat\n')
         state = tmp_path / f"state-{agent}"
         output = run_runner("run", "--agent", agent, "--workdir", tmp_path,
@@ -61,7 +61,7 @@ def test_plain_runner_forwards_configured_model_and_effort(tmp_path: Path):
         assert f"cwd:{tmp_path.resolve()}" in text
         assert "--worktree" not in text
         assert "--resume" not in text
-        if agent == "codex":
+        if agent in {"codex", "tcodex"}:
             assert 'model_reasoning_effort="high"' in text
         else:
             assert "--effort high" in text
@@ -740,6 +740,26 @@ def test_auto_selects_codebuddy_before_opencode(tmp_path: Path):
     status = run_runner("status", sid, "--state-dir", state, env=env)
 
     assert "agent=codebuddy" in status.stdout
+
+
+def test_auto_selects_tcodex_after_codex(tmp_path: Path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    make_provider(bin_dir, "tcodex", 'printf "tcodex:%s\\n" "$*"\ncat >/dev/null\n')
+    make_provider(bin_dir, "claude", 'printf "claude:%s\\n" "$*"\ncat >/dev/null\n')
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("select provider\n", encoding="utf-8")
+    state = tmp_path / "state"
+    env = runner_env(bin_dir)
+
+    result = run_runner(
+        "run", "--agent", "auto", "--workdir", tmp_path,
+        "--prompt-file", prompt, "--state-dir", state, env=env,
+    )
+
+    assert "agent=tcodex" in result.stdout
+    log = state / "sessions" / session_id(result.stdout) / "output.log"
+    assert "tcodex:--ask-for-approval never exec --sandbox workspace-write -" in log.read_text()
 
 
 def test_stop_marks_running_worker_failed(tmp_path: Path):

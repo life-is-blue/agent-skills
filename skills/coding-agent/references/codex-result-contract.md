@@ -49,7 +49,9 @@ text rendering of the same fields.
 
 Field notes:
 
-- `agent` identifies the provider (`codex` by default, or explicit `agy`).
+- `agent` identifies the provider (`codex` by default, or explicit `tcodex` or
+  `agy`). Codex and TCodex use the same event and result contract but remain
+  distinct provider identities.
   For agy, `thread_id` holds the native conversation ID, not the local job ID;
   `codex_exit_code` retains its legacy name for the raw provider exit code.
 - `activity` contains event bytes/mtime, text/tool update counts, completed

@@ -209,6 +209,23 @@ def test_freeze_preserves_binary_modes_and_explicit_new_files(host):
     assert result["config_path"] == str(host[0] / ".coordinator/config.json")
 
 
+def test_freeze_keeps_tracked_files_under_ignore_rules(host):
+    repo = host[0]
+    (repo / "data").mkdir()
+    (repo / "data/tracked.txt").write_text("baseline\n")
+    git(repo, "add", "data/tracked.txt")
+    (repo / ".gitignore").write_text(".env\ndata/\n")
+    git(repo, "add", ".gitignore")
+    git(repo, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+        "commit", "-qm", "tracked file later matched by an ignore rule")
+    source = collected_candidate(host)
+    (source / "data/tracked.txt").write_text("candidate\n")
+    (source / "source.bin").unlink()
+    reviewer = Path(run(host, "workspace", "prepare", "--role", "reviewer", "--round", "r")["workspace"]["path"])
+    assert (reviewer / "data/tracked.txt").read_text() == "candidate\n"
+    assert not (reviewer / "source.bin").exists()
+
+
 @pytest.mark.parametrize("change", ["candidate", "reviewer", "git-identity"])
 def test_dispatch_rejects_changed_frozen_workspace(host, change):
     source = collected_candidate(host)

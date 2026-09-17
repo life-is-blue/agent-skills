@@ -1,6 +1,6 @@
 ---
 name: coding-agent
-description: Delegate substantial coding work to Codex, agy, Claude Code, TClaude, CodeBuddy Code, or OpenCode through monitored runners. Structured Codex and agy modes return machine-readable results and explicit job identities; Codex also supports a read-only reviewer. Use for feature implementation, large refactors, code reviews, and long issue-to-PR work; do not use for simple edits, read-only lookup, or tasks that must remain in the current agent thread.
+description: Delegate substantial coding work to Codex, TCodex, agy, Claude Code, TClaude, CodeBuddy Code, or OpenCode through monitored runners. Structured Codex, TCodex and agy modes return machine-readable results and explicit job identities; Codex-compatible CLIs also support a read-only reviewer. Use for feature implementation, large refactors, code reviews, and long issue-to-PR work; do not use for simple edits, read-only lookup, or tasks that must remain in the current agent thread.
 ---
 
 # Coding Agent
@@ -8,12 +8,12 @@ description: Delegate substantial coding work to Codex, agy, Claude Code, TClaud
 This Skill bundles two adapters:
 
 - `scripts/coding-agent-run` — the plain-log runner. Launches and monitors any
-  supported coding CLI (Codex, Claude Code, TClaude, CodeBuddy Code, OpenCode)
+  supported coding CLI (Codex, TCodex, Claude Code, TClaude, CodeBuddy Code, OpenCode)
   and keeps provider output as a plain log. Its sessions, commands, and
   transport envelope are documented in the sections marked *(plain-log
   runner)*.
 - `scripts/codex_run.py` — the structured runner (legacy filename retained).
-  Supports Codex and explicit `start --agent agy --write`; returns a
+  Supports Codex, TCodex and explicit `start --agent agy --write`; returns a
   machine-readable result envelope instead of a log. See the section marked
   *(structured mode)*.
 
@@ -26,11 +26,11 @@ The workspace, prompt, and verification sections apply to both adapters.
   config; the plain runner's installed-provider order below is only its standalone
   fallback, not the coordinator's execution preference. Both runners must pass
   configured effort, never silently ignore it. Plain-log `--model`/`--effort`
-  are verified for Codex, Claude Code and TClaude; other mappings are refused.
+  are verified for Codex, TCodex, Claude Code and TClaude; other mappings are refused.
 - Route agy to the structured runner, not the plain-log provider allowlist.
   Read [agy](references/agy.md) before use; it is not a read-only reviewer.
 - With `--agent auto`, select the first installed provider in this order:
-  Codex, Claude Code, TClaude, CodeBuddy Code, OpenCode.
+  Codex, TCodex, Claude Code, TClaude, CodeBuddy Code, OpenCode.
 - Choose the Codex structured mode (`scripts/codex_run.py`) when the work is
   Codex-specific and the caller needs provider event parsing, thread resume,
   output-schema parsing, or the built-in reviewer. For everything else, use the
@@ -220,15 +220,17 @@ and `--result-file` additionally require Python 3 from the host.
 
 ## Codex structured mode (codex_run.py)
 
-`scripts/codex_run.py` executes the Codex CLI as a monitored job with a stable
-JSON envelope (job id, thread id, touched files, executed commands, token
-usage), thread resume, and an always-read-only built-in reviewer. Use it when a
-calling agent must act on Codex's result programmatically.
+`scripts/codex_run.py` executes Codex or the CLI-compatible TCodex distribution
+as a monitored job with a stable JSON envelope (job id, thread id, touched
+files, executed commands, token usage), thread resume, and an always-read-only
+built-in reviewer. Use it when a calling agent must act on the result
+programmatically.
 
 ```bash
 SKILL_DIR=/path/to/coding-agent
 
 python3 "$SKILL_DIR/scripts/codex_run.py" doctor
+python3 "$SKILL_DIR/scripts/codex_run.py" doctor --agent tcodex
 python3 "$SKILL_DIR/scripts/codex_run.py" start \
   --workdir /path/to/worktree --prompt-file /path/to/prompt.txt \
   --write --background --timeout 3600 --json
@@ -244,10 +246,10 @@ the verified CLI behavior in [codex-cli.md](references/codex-cli.md).
 ## Provider references
 
 - [agy](references/agy.md) — structured protocol, permissions and supervision
-- [Codex CLI behavior](references/codex-cli.md) — verified flags and event
-  stream for both Codex adapters
-- [Codex structured mode](references/codex-structured.md) — operations guide
-  for `codex_run.py`
+- [Codex and TCodex CLI behavior](references/codex-cli.md) — verified flags and
+  event stream for both Codex-compatible adapters
+- [Codex-compatible structured mode](references/codex-structured.md) —
+  operations guide for `codex_run.py`
 - [Claude Code](references/claude-code.md)
 - [TClaude](references/tclaude.md)
 - [CodeBuddy Code](references/codebuddy.md)

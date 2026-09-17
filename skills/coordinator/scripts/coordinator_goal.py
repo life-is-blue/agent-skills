@@ -454,7 +454,7 @@ def dispatch_workspace(goal: Goal, control: Path, role: str, round_id: str, env:
     return control
 
 
-CONFIG_AGENTS = {"codex", "agy", "claude", "tclaude"}
+CONFIG_AGENTS = {"codex", "tcodex", "agy", "claude", "tclaude"}
 
 
 def review_pair_allowed(implementer: dict, reviewer: dict) -> bool:
@@ -515,13 +515,13 @@ def load_config(args: argparse.Namespace) -> dict:
 
 def probe_candidate(candidate: dict, env: dict) -> None:
     agent = candidate["agent"]
-    command = [agent, "--", "--help"] if agent == "tclaude" else [agent, "--help"]
+    command = [agent, "--", "--help"] if agent in {"tcodex", "tclaude"} else [agent, "--help"]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=10, env=env)
     except (OSError, subprocess.TimeoutExpired) as exc:
         fail(f"{agent} preflight failed: {exc}")
     flags = ["--model"]
-    if candidate.get("effort") and agent != "codex":
+    if candidate.get("effort") and agent not in {"codex", "tcodex"}:
         flags += ["--effort"]
     if agent == "agy":
         flags += ["--input-format", "--output-format", "--json-schema", "--sandbox"]

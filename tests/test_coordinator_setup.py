@@ -20,7 +20,7 @@ def run(tmp_path, *args, env=None):
 def fake_host(tmp_path):
     binary = tmp_path / "bin"
     binary.mkdir()
-    for agent in ("codex", "tclaude", "agy"):
+    for agent in ("codex", "tcodex", "tclaude", "agy"):
         executable = binary / agent
         executable.write_text('#!/bin/sh\ncase "$*" in *--help*) echo "--model --effort --input-format --output-format --json-schema --sandbox";; *) exit 99;; esac\n')
         executable.chmod(0o755)
@@ -79,6 +79,20 @@ def test_setup_validates_and_saves_confirmed_config(tmp_path):
     before = (tmp_path / ".coordinator/config.json").read_bytes()
     assert run(tmp_path, "setup", "--from-file", str(source), env=env).returncode != 0
     assert (tmp_path / ".coordinator/config.json").read_bytes() == before
+
+
+def test_setup_accepts_tcodex_as_a_distinct_provider(tmp_path):
+    env = fake_host(tmp_path)
+    config = {"schema_version": 1,
+              "implementer": [{"agent": "tcodex", "model": "fixture-luna", "effort": "high"}],
+              "reviewer": [{"agent": "codex", "model": "fixture-sol", "effort": "medium"}]}
+    source = tmp_path / "confirmed.json"
+    source.write_text(json.dumps(config))
+
+    result = run(tmp_path, "setup", "--from-file", str(source), env=env)
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads((tmp_path / ".coordinator/config.json").read_text()) == config
 
 
 @pytest.mark.parametrize("change", [

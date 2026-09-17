@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Codex or agy as a monitored job with a stable JSON result envelope."""
+"""Run Codex, TCodex or agy as a monitored job with a stable JSON result envelope."""
 
 from __future__ import annotations
 
@@ -112,10 +112,12 @@ def ensure_git_repository(workdir: Path) -> None:
         )
 
 
-def ensure_codex_available() -> str:
-    binary = shutil.which("codex")
+def ensure_codex_available(agent: str = "codex") -> str:
+    binary = shutil.which(agent)
     if binary is None:
-        raise InputError("codex CLI not found on PATH; install it with `npm install -g @openai/codex`")
+        if agent == "codex":
+            raise InputError("codex CLI not found on PATH; install it with `npm install -g @openai/codex`")
+        raise InputError(f"{agent} CLI not found on PATH")
     return binary
 
 
@@ -269,7 +271,8 @@ def refresh_envelope(job: dict, job_dir: Path) -> dict:
     errors.extend(reduced["errors"])
     envelope["errors"] = errors
     thread_id = envelope.get("thread_id")
-    resume_prefix = "agy --conversation" if job.get("agent") == "agy" else "codex exec resume"
+    agent = job.get("agent", "codex")
+    resume_prefix = "agy --conversation" if agent == "agy" else f"{agent} exec resume"
     envelope["resume_command"] = f"{resume_prefix} {thread_id}" if thread_id else None
 
     if envelope.get("status") == "running" and not process_alive(job.get("pid")):
@@ -314,7 +317,7 @@ def build_codex_argv(job: dict) -> list[str]:
         if job.get("effort"):
             argv += ["--effort", job["effort"]]
         return argv
-    argv = ["codex", "-C", job["workdir"]]
+    argv = [job.get("agent", "codex"), "-C", job["workdir"]]
     if job["sandbox"] == "danger-full-access":
         argv.append("--dangerously-bypass-approvals-and-sandbox")
     else:
@@ -349,7 +352,7 @@ def build_codex_argv(job: dict) -> list[str]:
     return argv
 
 
-def resolve_resume_thread(state_dir: Path, workdir: Path) -> str:
+def resolve_resume_thread(state_dir: Path, workdir: Path, agent: str = "codex") -> str:
     jobs_dir = state_dir / "jobs"
     candidates = []
     for entry in jobs_dir.iterdir() if jobs_dir.is_dir() else []:
@@ -362,7 +365,7 @@ def resolve_resume_thread(state_dir: Path, workdir: Path) -> str:
             continue
         if job.get("workdir") != str(workdir):
             continue
-        if job.get("agent", "codex") != "codex":
+        if job.get("agent", "codex") != agent:
             continue
         envelope = refresh_envelope(job, entry)
         if not envelope.get("thread_id"):
@@ -373,7 +376,8 @@ def resolve_resume_thread(state_dir: Path, workdir: Path) -> str:
             )
         candidates.append((job.get("created_at", ""), envelope["thread_id"]))
     if not candidates:
-        raise InputError(f"no previous Codex thread recorded for {workdir}")
+        display_name = "Codex" if agent == "codex" else "TCodex"
+        raise InputError(f"no previous {display_name} thread recorded for {workdir}")
     candidates.sort()
     return candidates[-1][1]
 
@@ -795,8 +799,8 @@ def exit_code_for(envelope: dict) -> int:
 
 def start_like(args: argparse.Namespace, kind: str) -> int:
     agent = getattr(args, "agent", "codex")
-    if agent == "codex":
-        ensure_codex_available()
+    if agent in {"codex", "tcodex"}:
+        ensure_codex_available(agent)
     elif shutil.which(agent) is None:
         raise InputError(f"{agent} CLI not found on PATH")
     if agent == "agy" and (not args.write or args.unsafe or args.resume_last):
@@ -809,7 +813,7 @@ def start_like(args: argparse.Namespace, kind: str) -> int:
     workdir = Path(args.workdir).resolve()
     if not workdir.is_dir():
         raise InputError(f"workdir does not exist: {workdir}")
-    if agent == "codex":
+    if agent in {"codex", "tcodex"}:
         ensure_git_repository(workdir)
 
     options = {
@@ -847,7 +851,7 @@ def start_like(args: argparse.Namespace, kind: str) -> int:
         if args.resume and args.resume_last:
             raise InputError("choose either --resume or --resume-last")
         if args.resume_last:
-            options["resume_thread_id"] = resolve_resume_thread(state_dir, workdir)
+            options["resume_thread_id"] = resolve_resume_thread(state_dir, workdir, agent)
         elif args.resume:
             options["resume_thread_id"] = args.resume
             if agent == "agy":
@@ -1005,24 +1009,26 @@ def cmd_cancel(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     report: dict = {"schema_version": SCHEMA_VERSION, "ready": False, "checks": {}}
-    binary = shutil.which("codex")
-    report["checks"]["codex_path"] = binary
+    agent = args.agent
+    binary = shutil.which(agent)
+    report["checks"][f"{agent}_path"] = binary
     if binary is None:
-        report["next_steps"] = ["Install Codex with `npm install -g @openai/codex`."]
+        report["next_steps"] = (["Install Codex with `npm install -g @openai/codex`."]
+                                if agent == "codex" else ["Install TCodex and add `tcodex` to PATH."])
         emit_doctor(report, args.json)
         return EXIT_FAILED
 
-    version = subprocess.run(["codex", "--version"], capture_output=True, text=True, check=False)
+    version = subprocess.run([agent, "--version"], capture_output=True, text=True, check=False)
     report["checks"]["version"] = version.stdout.strip() or version.stderr.strip()
 
-    login = subprocess.run(["codex", "login", "status"], capture_output=True, text=True, check=False)
+    login = subprocess.run([agent, "login", "status"], capture_output=True, text=True, check=False)
     logged_in = login.returncode == 0
     report["checks"]["login"] = {
         "logged_in": logged_in,
         "detail": (login.stdout or login.stderr).strip(),
     }
     report["ready"] = logged_in
-    report["next_steps"] = [] if logged_in else ["Run `codex login` (or `codex login --device-auth`)."]
+    report["next_steps"] = [] if logged_in else [f"Run `{agent} login`."]
     emit_doctor(report, args.json)
     return EXIT_OK if report["ready"] else EXIT_FAILED
 
@@ -1064,9 +1070,9 @@ def build_parser() -> argparse.ArgumentParser:
         target.add_argument("--state-dir")
         target.add_argument("--json", action="store_true")
 
-    start = sub.add_parser("start", help="run a structured Codex or agy task")
+    start = sub.add_parser("start", help="run a structured Codex, TCodex or agy task")
     start.add_argument("--workdir", required=True)
-    start.add_argument("--agent", choices=["codex", "agy"], default="codex")
+    start.add_argument("--agent", choices=["codex", "tcodex", "agy"], default="codex")
     start.add_argument("--job-id", help="reserve an explicit local job identity; existing ids are refused")
     start.add_argument("--prompt-file")
     start.add_argument("--prompt")
@@ -1081,8 +1087,9 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--timeout", type=int, help="kill the Codex process after N seconds")
     add_common(start)
 
-    review = sub.add_parser("review", help="run the built-in Codex reviewer")
+    review = sub.add_parser("review", help="run the built-in Codex-compatible reviewer")
     review.add_argument("--workdir", required=True)
+    review.add_argument("--agent", choices=["codex", "tcodex"], default="codex")
     review.add_argument("--uncommitted", action="store_true")
     review.add_argument("--base")
     review.add_argument("--commit")
@@ -1114,7 +1121,8 @@ def build_parser() -> argparse.ArgumentParser:
     cancel.add_argument("job_id")
     add_common(cancel)
 
-    doctor = sub.add_parser("doctor", help="check the local Codex installation")
+    doctor = sub.add_parser("doctor", help="check a local Codex-compatible installation")
+    doctor.add_argument("--agent", choices=["codex", "tcodex"], default="codex")
     doctor.add_argument("--json", action="store_true")
 
     worker = sub.add_parser("_worker", help=argparse.SUPPRESS)

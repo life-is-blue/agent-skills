@@ -95,8 +95,8 @@ def workspace(tmp_path: Path) -> dict:
     }
 
 
-def install_codex(workspace: dict, body: str = FAKE_CODEX) -> None:
-    path = workspace["bin"] / "codex"
+def install_codex(workspace: dict, body: str = FAKE_CODEX, agent: str = "codex") -> None:
+    path = workspace["bin"] / agent
     path.write_text(body, encoding="utf-8")
     path.chmod(0o755)
 
@@ -138,6 +138,51 @@ def test_start_reduces_events_into_the_result_envelope(workspace: dict):
     assert envelope["usage"] == {"input_tokens": 11, "output_tokens": 3}
     assert envelope["errors"] == []
     assert Path(workspace["env"]["FAKE_CODEX_STDIN"]).read_text(encoding="utf-8") == "implement the fixture"
+
+
+def test_tcodex_uses_the_structured_codex_protocol(workspace: dict):
+    install_codex(workspace, agent="tcodex")
+
+    envelope = start_json(
+        workspace, "--agent", "tcodex", "--prompt", "implement the fixture",
+        "--model", "fixture-model", "--effort", "high",
+    )
+
+    assert envelope["agent"] == "tcodex"
+    assert envelope["resume_command"] == "tcodex exec resume thread-fixture"
+    argv = codex_argv(workspace)
+    assert argv.startswith(f"-C {workspace['repo']}")
+    assert "-m fixture-model" in argv
+    assert 'model_reasoning_effort="high"' in argv
+
+
+def test_tcodex_resume_last_does_not_reuse_codex_history(workspace: dict):
+    install_codex(workspace)
+    start_json(workspace, "--prompt", "codex pass")
+    install_codex(workspace, agent="tcodex")
+
+    result = run(
+        workspace, "start", "--workdir", workspace["repo"], "--agent", "tcodex",
+        "--prompt", "keep going", "--resume-last",
+    )
+
+    assert result.returncode == 1
+    assert "no previous TCodex thread recorded" in result.stderr
+
+
+def test_tcodex_review_uses_the_read_only_structured_path(workspace: dict):
+    install_codex(workspace, agent="tcodex")
+
+    result = run(
+        workspace, "review", "--workdir", workspace["repo"], "--agent", "tcodex",
+        "--uncommitted", "--json",
+    )
+    envelope = json.loads(result.stdout)
+
+    assert result.returncode == 0, result.stderr
+    assert envelope["agent"] == "tcodex"
+    assert envelope["sandbox"] == "read-only"
+    assert "exec review" in codex_argv(workspace)
 
 
 def test_read_only_is_the_default_and_write_is_explicit(workspace: dict):

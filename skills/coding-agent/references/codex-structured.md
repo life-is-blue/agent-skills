@@ -1,8 +1,9 @@
-# Codex structured mode
+# Codex-compatible structured mode
 
-Run `scripts/codex_run.py` to execute the Codex CLI as a monitored job. Every
+Run `scripts/codex_run.py` to execute Codex or TCodex as a monitored job. Every
 command prints a stable JSON envelope with `--json`, so a calling agent can act
-on the result instead of scraping console text. Design informed by
+on the result instead of scraping console text. TCodex uses `--agent tcodex` and
+otherwise follows the same command shapes. Design informed by
 [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc),
 implemented as a portable `codex exec --json` adapter.
 
@@ -12,10 +13,11 @@ behavior this adapter depends on.
 
 ## When to use this mode
 
-- Codex-specific work that needs a structured result, background execution,
-  thread resume, or the built-in reviewer.
+- Codex- or TCodex-specific work that needs a structured result, background
+  execution, thread resume, or the built-in reviewer.
 - Use the plain `coding-agent-run` runner when the provider may be Claude Code,
-  TClaude, CodeBuddy, or OpenCode, or when a plain streamed log is enough.
+  TClaude, CodeBuddy, or OpenCode, or when a plain streamed log is enough for a
+  Codex-compatible provider.
 - Handle simple edits and read-only questions directly.
 
 ## Preflight
@@ -24,15 +26,16 @@ behavior this adapter depends on.
 SKILL_DIR=/path/to/coding-agent
 
 python3 "$SKILL_DIR/scripts/codex_run.py" doctor
+python3 "$SKILL_DIR/scripts/codex_run.py" doctor --agent tcodex
 ```
 
-`doctor` reports the resolved `codex` binary, its version, and login state. If
-not ready, diagnose and pause Codex-dependent steps; do not improvise an auth
+`doctor` reports the selected binary, its version, and login state. If not
+ready, diagnose and pause provider-dependent steps; do not improvise an auth
 flow. Continue independent authorized work and use an already-authorized route
 only if it preserves the requested provider and workflow. Report the exact
 blocker when no such route exists.
 
-Codex requires a Git repository. For a modifying task:
+Codex and TCodex require a Git repository. For a modifying task:
 
 1. Resolve the target repository, canonical remote, target base, and trust of
    the source ref from the request and Git state. Ask only about a material
@@ -70,6 +73,7 @@ Write-capable work in an isolated worktree, in the background:
 
 ```bash
 python3 "$SKILL_DIR/scripts/codex_run.py" start \
+  --agent tcodex \
   --workdir /path/to/worktree \
   --prompt-file /path/to/prompt.txt \
   --write --background --timeout 3600 --json
@@ -93,23 +97,26 @@ python3 "$SKILL_DIR/scripts/codex_run.py" start --workdir /path/to/worktree \
 ```
 
 Send only the delta instruction on a resume. Sandbox mode is not inherited, so
-pass `--write` again when the follow-up must edit files.
+pass `--write` again when the follow-up must edit files. Resume lookup is scoped
+to the selected provider, so Codex and TCodex do not reuse each other's recorded
+threads.
 
 Built-in reviewer, always read-only:
 
 ```bash
 python3 "$SKILL_DIR/scripts/codex_run.py" review --workdir /path/to/repo --uncommitted --json
-python3 "$SKILL_DIR/scripts/codex_run.py" review --workdir /path/to/repo --base main --background
+python3 "$SKILL_DIR/scripts/codex_run.py" review --agent tcodex \
+  --workdir /path/to/repo --base main --background
 ```
 
 Add `--model`, `--effort`, and `--output-schema FILE` only when the task needs
-them. With no model or effort, Codex uses its own configured defaults.
+them. With no model or effort, the selected CLI uses its own configured defaults.
 
 ## Consume the result
 
 Read `status` and `exit_code` first, then `final_message`, `touched_files`, and
-`commands`. Preserve Codex's own verdict, severities, file paths, and line
-numbers when reporting to the user. Never turn a failed Codex run into your own
+`commands`. Preserve the provider's own verdict, severities, file paths, and line
+numbers when reporting to the user. Never turn a failed provider run into your own
 implementation attempt without first diagnosing the failure. Retry with a
 relevant change or use an already-authorized route when that preserves the
 requested provider and workflow; otherwise report the concrete blocker.
@@ -128,7 +135,7 @@ when a finding requires a material product or scope decision.
   `$XDG_STATE_HOME/codex-run`, or `~/.local/state/codex-run`. The legacy
   `CODEX_DELEGATE_STATE_DIR` variable and `codex-delegate` directory from
   before the skill merge are honored when present. State holds the prompt, the
-  raw event stream, and Codex stderr; treat it as sensitive. Use `--state-dir`
+  raw event stream, and provider stderr; treat it as sensitive. Use `--state-dir`
   to keep state in an allowed location when needed; obtain authorization if
   an outside-workspace write is required.
 
@@ -136,7 +143,7 @@ when a finding requires a material product or scope decision.
 
 1. Check the envelope `status`, `exit_code`, and `errors`.
 2. Review the diff in the worktree. A zero exit code alone proves nothing.
-3. Confirm the commands Codex reported actually cover the required tests, and
+3. Confirm the commands the provider reported actually cover the required tests, and
    rerun the repository's checks from the parent agent.
 4. Refresh the target base and verify ancestry before pushing a new branch.
 5. Never force-push or rewrite a shared branch without explicit authorization.

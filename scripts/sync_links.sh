@@ -31,6 +31,7 @@ CATALOG="${REPO_ROOT}/skills/catalog.json"
 TARGETS=(
   "${HOME}/.agents/skills"
   "${HOME}/.codex/skills"
+  "${HOME}/.tcodex/skills"
   "${HOME}/.codebuddy/skills"
   "${HOME}/.claude/skills"
   "${HOME}/.tclaude/skills"

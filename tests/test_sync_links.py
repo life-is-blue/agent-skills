@@ -21,6 +21,7 @@ SCRIPT = REPO_ROOT / "scripts" / "sync_links.sh"
 CLIENT_DIRS = [
     ".agents/skills",
     ".codex/skills",
+    ".tcodex/skills",
     ".codebuddy/skills",
     ".claude/skills",
     ".tclaude/skills",

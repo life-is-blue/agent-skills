@@ -3,6 +3,7 @@
 import os
 import fcntl
 import hashlib
+import shutil
 import subprocess
 import tempfile
 from contextlib import contextmanager
@@ -100,16 +101,24 @@ def capture(root: Path, scratch: Path, include: list[str]) -> dict:
         raise WorkspaceError("candidate has untracked files; explicitly select source files with --include-untracked (never credentials)")
     # Include staged additions and tracked deletions without changing the user's
     # index. Git tree objects preserve binary content, executable bits and links.
-    paths = set(filter(None, git(root, "ls-files", "-z").split(b"\0")))
-    paths.update(filter(None, git(root, "ls-tree", "-r", "--name-only", "-z", head).split(b"\0")))
-    paths.update(selected)
+    # Work on a copy of the candidate's own index: it already holds staged
+    # additions/deletions and a stat cache, so `add -u` costs what changed, not
+    # the size of the tree, and tracked files under ignore rules stay tracked.
+    # (Naming every tracked path as a pathspec timed out on a ~100k-file tree
+    # and was refused for tracked files matching .gitignore.)
+    real_index = Path(os.fsdecode(git(root, "rev-parse", "--path-format=absolute",
+                                      "--git-path", "index").strip()))
     scratch.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="snapshot-", dir=scratch) as temporary:
         index = Path(temporary) / "index"
-        git(root, "read-tree", head, index=index)
-        if paths:
-            git(root, "add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul",
-                input=b"\0".join(sorted(paths)) + b"\0", index=index)
+        if real_index.is_file():
+            shutil.copyfile(real_index, index)
+        else:
+            git(root, "read-tree", head, index=index)
+        git(root, "add", "-u", index=index)
+        if selected:
+            git(root, "add", "--pathspec-from-file=-", "--pathspec-file-nul",
+                input=b"\0".join(sorted(selected)) + b"\0", index=index)
         tree = git(root, "write-tree", index=index).decode().strip()
     patch = git(root, "diff", "--binary", head, tree)
     return {"head": head, "tree": tree, "include_untracked": sorted(include),

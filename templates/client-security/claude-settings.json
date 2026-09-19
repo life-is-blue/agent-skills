@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(~/.mcporter/**)",
+      "Read(~/.claude.json)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.git-credentials)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gcloud/**)",
+      "Read(**/.env*)",
+      "Bash(cat *git-credentials*)",
+      "Bash(cat *credentials.json*)",
+      "Bash(cat *.env*)"
+    ]
+  }
+}

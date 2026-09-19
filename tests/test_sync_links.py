@@ -33,6 +33,7 @@ IN_REPO_SKILLS = {
     "coding-agent": REPO_ROOT / "skills" / "coding-agent",
     "coordinator": REPO_ROOT / "skills" / "coordinator",
     "github-actions-to-cnb": REPO_ROOT / "skills" / "github-actions-to-cnb",
+    "gongfeng": REPO_ROOT / "skills" / "gongfeng",
     "search-docs": REPO_ROOT / "skills" / "search-docs",
 }
 
@@ -134,15 +135,15 @@ def test_sync_prunes_stale_owned_links_but_keeps_foreign_ones(tmp_path: Path):
     # A link into the repository's skills tree that is no longer scoped.
     (client / "branded-pptx").symlink_to(REPO_ROOT / "skills" / "branded-pptx")
     # A link this script does not own (a hub install, say).
-    foreign_source = tmp_path / "gongfeng-real"
+    foreign_source = tmp_path / "custom-hub-skill-real"
     foreign_source.mkdir()
-    (client / "gongfeng").symlink_to(foreign_source)
+    (client / "custom-hub-skill").symlink_to(foreign_source)
 
     result = run_script(home, "sync", siblings=siblings)
 
     assert result.returncode == 0, result.stderr
     assert not (client / "branded-pptx").exists()
-    assert (client / "gongfeng").resolve() == foreign_source
+    assert (client / "custom-hub-skill").resolve() == foreign_source
 
 
 def test_check_reports_drift_until_sync_has_run(tmp_path: Path):

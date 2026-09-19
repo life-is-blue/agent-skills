@@ -18,6 +18,10 @@
       "distribution": "protocol-only"
     },
     {
+      "name": "gongfeng",
+      "distribution": "adapter"
+    },
+    {
       "name": "office-mpp",
       "distribution": "bundled"
     },

@@ -1,0 +1,19 @@
+{
+  "allowNonWorkspaceAccess": false,
+  "permissions": {
+    "deny": [
+      "read_file(~/.mcporter)",
+      "read_file(~/.claude.json)",
+      "read_file(~/.config/gh)",
+      "read_file(~/.git-credentials)",
+      "read_file(~/.gitconfig)",
+      "read_file(~/.ssh)",
+      "read_file(~/.aws)",
+      "read_file(~/.config/gcloud)",
+      "read_file(**/.env*)",
+      "command(cat .*(\\.git-credentials|\\.claude\\.json|\\.mcporter|credentials\\.json|id_rsa|\\.env).*)",
+      "command(curl .*)",
+      "command(sudo)"
+    ]
+  }
+}

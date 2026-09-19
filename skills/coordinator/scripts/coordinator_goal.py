@@ -296,12 +296,19 @@ def cmd_init(args: argparse.Namespace) -> dict:
 def cmd_freeze(args: argparse.Namespace) -> dict:
     goal = Goal(Path(args.workdir).resolve(), args.goal_id)
     if args.role == "implementer":
-        # An implementer freeze is the go signal: it advances the goal. From
-        # ready it opens the NEXT planned round after an accepted one; a round
-        # that already has a frozen contract is never refrozen.
+        # An implementer freeze is the go signal: it advances the goal.
         goal.require_state({"establishing", "ready", "repairing"}, "freeze a contract")
-        if goal.state == "ready" and goal.round_entry(args.round).get("contract"):
-            raise GuardError(f"round {args.round} already has a frozen contract; freeze a new round")
+        if goal.state == "ready":
+            # ready also means "frozen, awaiting dispatch". Only a reviewed
+            # round may be followed by a new one, so a pending round is never
+            # silently skipped, and a frozen contract is never refrozen.
+            current = goal.data.get("current_round")
+            if goal.round_entry(current).get("reviewer", {}).get("outcome") != "collected":
+                raise GuardError(
+                    f"round {current} has no collected review; dispatch it before freezing another round"
+                )
+            if goal.round_entry(args.round).get("contract"):
+                raise GuardError(f"round {args.round} already has a frozen contract; freeze a new round")
     else:
         # A review contract is bookkeeping prepared around the dispatch; it
         # must never move the state machine backwards or forwards.

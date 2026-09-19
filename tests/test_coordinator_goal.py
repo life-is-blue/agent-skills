@@ -301,24 +301,35 @@ def test_freeze_moves_establishing_to_ready(tmp_path: Path):
     assert "guard:" in refreeze.stderr
 
 
-def test_ready_freezes_only_a_new_round(tmp_path: Path):
+def test_ready_freezes_only_a_new_round_after_review(tmp_path: Path):
     init_run(tmp_path)
     transport = make_transport(tmp_path)
     freeze_round(tmp_path, transport)
-    nxt = run_goal(
-        "freeze", "--workdir", tmp_path, "--goal-id", "r1",
-        "--round", "round-2", "--contract", tmp_path / "contract.md",
-    )
+
+    def freeze(round_id: str):
+        return run_goal(
+            "freeze", "--workdir", tmp_path, "--goal-id", "r1",
+            "--round", round_id, "--contract", tmp_path / "contract.md",
+            check=False,
+        )
+
+    skipped = freeze("round-2")
+    assert skipped.returncode == 2
+    assert "round round-1 has no collected review" in skipped.stderr
+
+    freeze_round(tmp_path, transport, role="reviewer", name="review.md")
+    dispatch_and_collect(tmp_path, transport, "implementer", IMPL_OK)
+    dispatch_and_collect(tmp_path, transport, "reviewer", REVIEW_GO)
+    run_goal("advance", "--workdir", tmp_path, "--goal-id", "r1", "--to", "ready")
+
+    refrozen = freeze("round-1")
+    assert refrozen.returncode == 2
+    assert "already has a frozen contract" in refrozen.stderr
+
+    nxt = freeze("round-2")
     assert payload(nxt)["state"] == "ready"
     status = payload(run_goal("status", "--workdir", tmp_path, "--goal-id", "r1"))
     assert status["current_round"] == "round-2"
-    again = run_goal(
-        "freeze", "--workdir", tmp_path, "--goal-id", "r1",
-        "--round", "round-2", "--contract", tmp_path / "contract.md",
-        check=False,
-    )
-    assert again.returncode == 2
-    assert "already has a frozen contract" in again.stderr
 
 
 def test_dispatch_guard_requires_ready(tmp_path: Path):

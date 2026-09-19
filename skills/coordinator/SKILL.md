@@ -233,7 +233,8 @@ not relay jobs or keep books by hand. It does three things and no more:
   generates `.coordinator/.gitignore` to ignore runtime output without editing
   the repository's root ignore file; `status` reports current state.
 - **Guarded transitions** — `freeze` (establishing/repairing → ready; from
-  ready only to open a new round, never to refreeze one),
+  ready only to open a new round once the current round's review is
+  collected, never to refreeze one),
   `dispatch` (drives the `coding-agent` transport; ready → implementing →
   reviewing), and `advance` (coordinator-driven moves) refuse illegal
   transitions. The repair bound is enforced mechanically: when it is
